@@ -634,12 +634,12 @@ char *
 percent_expand(const char *string, ...)
 {
 #define EXPAND_MAX_KEYS	16
-	u_int num_keys, i, j;
+	u_int num_keys, i, j, k;
 	struct {
 		const char *key;
 		const char *repl;
 	} keys[EXPAND_MAX_KEYS];
-	char buf[4096];
+	Buffer buf;
 	va_list ap;
 
 	/* Gather keys */
@@ -657,34 +657,43 @@ percent_expand(const char *string, ...)
 	va_end(ap);
 
 	/* Expand string */
-	*buf = '\0';
-	for (i = 0; *string != '\0'; string++) {
-		if (*string != '%') {
- append:
-			buf[i++] = *string;
-			if (i >= sizeof(buf))
-				fatal("%s: string too long", __func__);
-			buf[i] = '\0';
+	buffer_init(&buf);
+	k = 0;
+	for (i = 0; string[i] != '\0'; i++) {
+		if (string[i] != '%') {
 			continue;
 		}
-		string++;
-		/* %% case */
-		if (*string == '%')
-			goto append;
-		if (*string == '\0')
-			fatal("%s: invalid format", __func__);
-		for (j = 0; j < num_keys; j++) {
-			if (strchr(keys[j].key, *string) != NULL) {
-				i = strlcat(buf, keys[j].repl, sizeof(buf));
-				if (i >= sizeof(buf))
-					fatal("%s: string too long", __func__);
-				break;
-			}
+		if (k < i) {
+			buffer_append(&buf, &string[k], i - k);
 		}
-		if (j >= num_keys)
-			fatal("%s: unknown key %%%c", __func__, *string);
+		i++;
+		/* %% case */
+		if (string[i] == '%') {
+			buffer_append(&buf, &string[i], 1);
+		} else if (string[i] == '\0') {
+			fatal("%s: invalid format", __func__);
+		} else {
+			for (j = 0; j < num_keys; j++) {
+				if (strchr(keys[j].key, string[i]) != NULL) {
+					buffer_append(&buf, keys[j].repl,
+					    strlen(keys[j].repl));
+					break;
+				}
+			}
+			if (j >= num_keys)
+				fatal("%s: unknown key %%%c", __func__,
+				    string[i]);
+		}
+		k = i + 1;
 	}
-	return (xstrdup(buf));
+	if (k < i) {
+		buffer_append(&buf, &string[k], i - k);
+	}
+	/* i points to '\0' */
+	buffer_append(&buf, &string[i], 1);
+
+	/* reuse alloc from buffer, but compact it down to actual size */
+	return realloc(buffer_ptr(&buf), buffer_len(&buf));
 #undef EXPAND_MAX_KEYS
 }
 

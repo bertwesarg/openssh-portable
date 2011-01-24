@@ -132,16 +132,22 @@ sshbuf_fromb(struct sshbuf *buf)
 }
 
 void
-sshbuf_init(struct sshbuf *ret)
+sshbuf_init_len(struct sshbuf *ret, size_t init_len)
 {
 	explicit_bzero(ret, sizeof(*ret));
-	ret->alloc = SSHBUF_SIZE_INIT;
+	ret->alloc = init_len;
 	ret->max_size = SSHBUF_SIZE_MAX;
 	ret->readonly = 0;
 	ret->dont_free = 1;
 	ret->refcount = 1;
 	if ((ret->cd = ret->d = calloc(1, ret->alloc)) == NULL)
 		ret->alloc = 0;
+}
+
+void
+sshbuf_init(struct sshbuf *ret)
+{
+	sshbuf_init_len(ret, SSHBUF_SIZE_INIT);
 }
 
 void

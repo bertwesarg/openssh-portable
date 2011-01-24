@@ -56,6 +56,7 @@ struct sshbuf {
  * instead. sshbuf_init() is deprectated and will go away soon (it is
  * only included to allow compat with buffer_* in OpenSSH)
  */
+void sshbuf_init_len(struct sshbuf *buf, size_t init_len);
 void sshbuf_init(struct sshbuf *buf);
 #endif
 

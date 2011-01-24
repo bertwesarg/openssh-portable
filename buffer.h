@@ -26,6 +26,7 @@
 typedef struct sshbuf Buffer;
 
 #define buffer_init(b)		sshbuf_init(b)
+#define buffer_init_len(b,len)	sshbuf_init_len(b, len)
 #define buffer_clear(b)		sshbuf_reset(b)
 #define buffer_free(b)		sshbuf_free(b)
 #define buffer_dump(b)		sshbuf_dump(b, stderr)

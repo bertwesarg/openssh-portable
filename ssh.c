@@ -1469,6 +1469,7 @@ control_persist_detach(void)
 {
 	pid_t pid;
 	int devnull, keep_stderr;
+	struct passwd *pw;
 
 	debug("%s: backgrounding master process", __func__);
 
@@ -1495,6 +1496,11 @@ control_persist_detach(void)
 		/* muxclient() doesn't return on success. */
  		fatal("Failed to connect to new control master");
  	}
+
+	if ((pw = getpwuid(original_real_uid)) == NULL)
+		fatal("load_public_identity_files: getpwuid failed");
+	chdir(pw->pw_dir);
+
 	if ((devnull = open(_PATH_DEVNULL, O_RDWR)) == -1) {
 		error("%s: open(\"/dev/null\"): %s", __func__,
 		    strerror(errno));

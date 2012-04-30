@@ -112,7 +112,7 @@ struct mux_stdio_confirm_ctx {
 struct mux_channel_confirm_ctx {
 	u_int cid;	/* channel id */
 	u_int rid;	/* request id */
-	int fid;	/* forward id */
+	u_int fid;	/* forward id */
 };
 
 /* fd to control socket */
@@ -557,9 +557,10 @@ mux_confirm_remote_forward(int type, u_int32_t seq, void *ctxt)
 {
 	struct mux_channel_confirm_ctx *fctx = ctxt;
 	char *failmsg = NULL;
-	struct Forward *rfwd;
+	struct Forward *rfwd = NULL;
 	Channel *c;
 	Buffer out;
+	int i;
 
 	if ((c = channel_by_id(fctx->cid)) == NULL) {
 		/* no channel for reply */
@@ -567,15 +568,15 @@ mux_confirm_remote_forward(int type, u_int32_t seq, void *ctxt)
 		return;
 	}
 	buffer_init(&out);
-	if (fctx->fid >= options.num_forwards ||
-	    (options.forwards[fctx->fid].connect_path == NULL &&
-	    options.forwards[fctx->fid].connect_host == NULL)) {
-		xasprintf(&failmsg, "unknown forwarding id %d", fctx->fid);
-		goto fail;
+	for (i = 0; i < options.num_forwards; i++) {
+		if (options.forwards[i].id == fctx->fid) {
+			rfwd = &options.forwards[i];
+			break;
+		}
 	}
-	rfwd = &options.forwards[fctx->fid];
-	if (rfwd->type != SSH_FWD_REMOTE) {
-		xasprintf(&failmsg, "non-remote forwarding id %d", fctx->fid);
+	if (rfwd == NULL || rfwd->type != SSH_FWD_REMOTE ||
+	    (rfwd->connect_path == NULL && rfwd->connect_host == NULL)) {
+		xasprintf(&failmsg, "unknown forwarding id %d", fctx->fid);
 		goto fail;
 	}
 	debug("%s: %s for: listen %d, connect %s:%d", __func__,
@@ -761,11 +762,10 @@ process_mux_open_fwd(u_int rid, Channel *c, Buffer *m, Buffer *r)
 		fwd.handle = channel_request_remote_forwarding(&fwd);
 		if (fwd.handle < 0)
 			goto fail;
-		add_forward(&options, &fwd);
 		fctx = xcalloc(1, sizeof(*fctx));
 		fctx->cid = c->self;
 		fctx->rid = rid;
-		fctx->fid = options.num_forwards - 1;
+		fctx->fid = add_forward(&options, &fwd);
 		client_register_global_confirm(mux_confirm_remote_forward,
 		    fctx);
 		freefwd = 0;

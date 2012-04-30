@@ -317,9 +317,10 @@ static struct {
  * error.
  */
 
-void
+u_int
 add_forward(Options *options, const struct Forward *newfwd)
 {
+	static u_int fid_sequence;
 	struct Forward *fwd;
 	extern uid_t original_real_uid;
 	int i;
@@ -333,13 +334,14 @@ add_forward(Options *options, const struct Forward *newfwd)
 	/* Don't add duplicates */
 	for (i = 0; i < options->num_forwards; i++) {
 		if (forward_equals(newfwd, options->forwards + i))
-			return;
+			return options->forwards[i].id;
 	}
 	options->forwards = xreallocarray(options->forwards,
 	    options->num_forwards + 1,
 	    sizeof(*options->forwards));
 	fwd = &options->forwards[options->num_forwards++];
 
+	fwd->id = fid_sequence++;
 	fwd->type = newfwd->type;
 	fwd->listen_host = newfwd->listen_host;
 	fwd->listen_port = newfwd->listen_port;
@@ -352,6 +354,8 @@ add_forward(Options *options, const struct Forward *newfwd)
 		fwd->handle = newfwd->handle;
 		fwd->allocated_port = 0;
 	}
+
+	return fwd->id;
 }
 
 static void

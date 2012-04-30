@@ -24,6 +24,7 @@
 
 /* Data structure for representing a forwarding request. */
 struct Forward {
+	u_int	  id;			/* sequential id of this forward */
 	u_int	  type;			/* Type of forwarding [1, 2, 3] */
 	char	 *listen_host;		/* Host (address) to listen on. */
 	int	  listen_port;		/* Port to forward. */

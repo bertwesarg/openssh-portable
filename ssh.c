@@ -1533,7 +1533,22 @@ fork_postauth(void)
 static void
 ssh_confirm_remote_forward(int type, u_int32_t seq, void *ctxt)
 {
-	struct Forward *rfwd = (struct Forward *)ctxt;
+	u_int fid = *(u_int *)ctxt;
+	struct Forward *rfwd = NULL;
+	int i;
+
+	free(ctxt);
+
+	for (i = 0; i < options.num_forwards; i++) {
+		if (options.forwards[i].id == fid) {
+			rfwd = &options.forwards[i];
+			break;
+		}
+	}
+	if (rfwd == NULL) {
+		debug("remote forwarding not found: %u", fid);
+		return;
+	}
 
 	/* XXX verbose() on failure? */
 	debug("remote forward %s for: listen %s%s%d, connect %s:%d",
@@ -1678,8 +1693,10 @@ ssh_init_forwarding(void)
 				    "forwarding.");
 		} else {
 			remote_forward_confirms_pending++;
+			u_int *idcp = xmalloc(sizeof(*idcp));
+			*idcp = options.forwards[i].id;
 			client_register_global_confirm(ssh_confirm_remote_forward,
-			    &options.forwards[i]);
+			    idcp);
 		}
 	}
 
@@ -1692,7 +1709,7 @@ ssh_init_forwarding(void)
 			else
 				error("Could not request tunnel forwarding.");
 		}
-	}			
+	}
 }
 
 static void

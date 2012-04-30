@@ -552,35 +552,6 @@ format_forward(u_int ftype, struct Forward *fwd)
 	return ret;
 }
 
-static int
-compare_host(const char *a, const char *b)
-{
-	if (a == NULL && b == NULL)
-		return 1;
-	if (a == NULL || b == NULL)
-		return 0;
-	return strcmp(a, b) == 0;
-}
-
-static int
-compare_forward(struct Forward *a, struct Forward *b)
-{
-	if (!compare_host(a->listen_host, b->listen_host))
-		return 0;
-	if (!compare_host(a->listen_path, b->listen_path))
-		return 0;
-	if (a->listen_port != b->listen_port)
-		return 0;
-	if (!compare_host(a->connect_host, b->connect_host))
-		return 0;
-	if (!compare_host(a->connect_path, b->connect_path))
-		return 0;
-	if (a->connect_port != b->connect_port)
-		return 0;
-
-	return 1;
-}
-
 static void
 mux_confirm_remote_forward(int type, u_int32_t seq, void *ctxt)
 {
@@ -743,7 +714,7 @@ process_mux_open_fwd(u_int rid, Channel *c, Buffer *m, Buffer *r)
 	case MUX_FWD_LOCAL:
 	case MUX_FWD_DYNAMIC:
 		for (i = 0; i < options.num_local_forwards; i++) {
-			if (compare_forward(&fwd,
+			if (forward_equals(&fwd,
 			    options.local_forwards + i)) {
  exists:
 				debug2("%s: found existing forwarding",
@@ -756,7 +727,7 @@ process_mux_open_fwd(u_int rid, Channel *c, Buffer *m, Buffer *r)
 		break;
 	case MUX_FWD_REMOTE:
 		for (i = 0; i < options.num_remote_forwards; i++) {
-			if (compare_forward(&fwd,
+			if (forward_equals(&fwd,
 			    options.remote_forwards + i)) {
 				if (fwd.listen_port != 0)
 					goto exists;
@@ -881,7 +852,7 @@ process_mux_close_fwd(u_int rid, Channel *c, Buffer *m, Buffer *r)
 	case MUX_FWD_LOCAL:
 	case MUX_FWD_DYNAMIC:
 		for (i = 0; i < options.num_local_forwards; i++) {
-			if (compare_forward(&fwd,
+			if (forward_equals(&fwd,
 			    options.local_forwards + i)) {
 				found_fwd = options.local_forwards + i;
 				break;
@@ -890,7 +861,7 @@ process_mux_close_fwd(u_int rid, Channel *c, Buffer *m, Buffer *r)
 		break;
 	case MUX_FWD_REMOTE:
 		for (i = 0; i < options.num_remote_forwards; i++) {
-			if (compare_forward(&fwd,
+			if (forward_equals(&fwd,
 			    options.remote_forwards + i)) {
 				found_fwd = options.remote_forwards + i;
 				break;

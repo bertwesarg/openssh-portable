@@ -262,6 +262,7 @@ void     channel_close_all(void);
 int      channel_still_open(void);
 char	*channel_open_message(void);
 int	 channel_find_open(void);
+void	 channel_for_each(void (*)(Channel *, void *), void *);
 
 /* tcp forwarding */
 struct Forward;

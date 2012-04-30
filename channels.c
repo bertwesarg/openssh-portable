@@ -684,6 +684,50 @@ channel_find_open(void)
 }
 
 /*
+ * Calls the function for each public channel.
+ */
+void
+channel_for_each(void (*channel_cb)(Channel *, void *), void *channel_cb_arg)
+{
+	Channel *c;
+	u_int i;
+
+	for (i = 0; i < channels_alloc; i++) {
+		c = channels[i];
+		if (c == NULL)
+			continue;
+		switch (c->type) {
+		case SSH_CHANNEL_X11_LISTENER:
+		case SSH_CHANNEL_PORT_LISTENER:
+		case SSH_CHANNEL_RPORT_LISTENER:
+		case SSH_CHANNEL_CLOSED:
+		case SSH_CHANNEL_AUTH_SOCKET:
+		case SSH_CHANNEL_ZOMBIE:
+		case SSH_CHANNEL_ABANDONED:
+		case SSH_CHANNEL_MUX_LISTENER:
+		case SSH_CHANNEL_UNIX_LISTENER:
+		case SSH_CHANNEL_RUNIX_LISTENER:
+		case SSH_CHANNEL_MUX_PROXY:
+		case SSH_CHANNEL_MUX_CLIENT:
+			continue;
+		case SSH_CHANNEL_LARVAL:
+		case SSH_CHANNEL_OPENING:
+		case SSH_CHANNEL_CONNECTING:
+		case SSH_CHANNEL_DYNAMIC:
+		case SSH_CHANNEL_OPEN:
+		case SSH_CHANNEL_X11_OPEN:
+		case SSH_CHANNEL_INPUT_DRAINING:
+		case SSH_CHANNEL_OUTPUT_DRAINING:
+			channel_cb(c, channel_cb_arg);
+			continue;
+		default:
+			fatal("channel_open_message: bad channel type %d", c->type);
+			/* NOTREACHED */
+		}
+	}
+}
+
+/*
  * Returns a message describing the currently open forwarded connections,
  * suitable for sending to the client.  The message contains crlf pairs for
  * newlines.

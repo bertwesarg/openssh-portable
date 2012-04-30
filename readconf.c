@@ -358,6 +358,39 @@ add_forward(Options *options, const struct Forward *newfwd)
 	return fwd->id;
 }
 
+/*
+ * Remove a TCP/IP port forward from the options.
+ */
+
+void
+remove_forward(Options *options, struct Forward *remfwd)
+{
+	if (remfwd < options->forwards ||
+	    options->forwards + options->num_forwards <= remfwd)
+		fatal("Invalid forwarding to remove.");
+
+	free(remfwd->listen_host);
+	free(remfwd->listen_path);
+	free(remfwd->connect_host);
+	free(remfwd->connect_path);
+	remfwd->listen_host = remfwd->connect_host = NULL;
+	remfwd->listen_path = remfwd->connect_path = NULL;
+	remfwd->listen_port = remfwd->connect_port = 0;
+
+	options->num_forwards--;
+	while (remfwd < options->forwards + options->num_forwards) {
+		*remfwd = *(remfwd + 1);
+		remfwd++;
+	}
+	if (options->num_forwards > 0)
+		options->forwards = xreallocarray(options->forwards,
+		    options->num_forwards, sizeof(*remfwd));
+	else {
+		free(options->forwards);
+		options->forwards = NULL;
+	}
+}
+
 static void
 clear_forwardings(Options *options)
 {

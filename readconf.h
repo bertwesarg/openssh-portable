@@ -205,6 +205,7 @@ void	 dump_client_config(Options *o, const char *host);
 
 int	 parse_forward(struct Forward *, const char *, u_int);
 u_int	 add_forward(Options *, const struct Forward *);
+void	 remove_forward(Options *, struct Forward *);
 void	 add_identity_file(Options *, const char *, const char *, int);
 void	 add_certificate_file(Options *, const char *, int);
 

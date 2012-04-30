@@ -864,14 +864,7 @@ process_mux_close_fwd(u_int rid, Channel *c, Buffer *m, Buffer *r)
 		buffer_put_int(r, MUX_S_OK);
 		buffer_put_int(r, rid);
 
-		found_fwd->type = 0;
-		free(found_fwd->listen_host);
-		free(found_fwd->listen_path);
-		free(found_fwd->connect_host);
-		free(found_fwd->connect_path);
-		found_fwd->listen_host = found_fwd->connect_host = NULL;
-		found_fwd->listen_path = found_fwd->connect_path = NULL;
-		found_fwd->listen_port = found_fwd->connect_port = 0;
+		remove_forward(&options, found_fwd);
 	} else {
 		buffer_put_int(r, MUX_S_FAILURE);
 		buffer_put_int(r, rid);

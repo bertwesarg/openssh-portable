@@ -907,9 +907,10 @@ process_cmdline(void)
 {
 	void (*handler)(int);
 	char *s, *cmd;
-	int ok, delete = 0;
+	int ok, delete = 0, i;
 	u_int fwdtype;
-	struct Forward fwd;
+	struct Forward fwd, *found_fwd;
+	int freefwd = 1;
 
 	memset(&fwd, 0, sizeof(fwd));
 
@@ -975,25 +976,40 @@ process_cmdline(void)
 	while (isspace((u_char)*++s))
 		;
 
-	/* XXX update list of forwards in options */
 	if (delete) {
-		/* We pass SSH_FWD_DYNAMIC to restrict to 1 or 2 fields. */
+		/* We pass SSH_FWD_DYNAMIC to restrict to 1 or 2 fields, i.e.,
+		   only the listening part. */
 		if (!parse_forward(&fwd, s, SSH_FWD_DYNAMIC)) {
 			logit("Bad forwarding close specification.");
 			goto out;
 		}
+		/* set the correct type now, after the parsing */
 		fwd.type = fwdtype;
-		if (fwdtype == SSH_FWD_REMOTE)
+
+		found_fwd = NULL;
+		for (i = 0; i < options.num_forwards; i++) {
+			if (forward_listen_equals(&fwd, &options.forwards[i])) {
+				found_fwd = &options.forwards[i];
+				break;
+			}
+		}
+		if (!found_fwd) {
+			logit("Unknown port forwarding.");
+			goto out;
+		}
+
+		if (fwd.type == SSH_FWD_REMOTE)
 			ok = channel_request_rforward_cancel(&fwd) == 0;
-		else if (fwdtype == SSH_FWD_DYNAMIC)
+		else if (fwd.type == SSH_FWD_DYNAMIC)
 			ok = channel_cancel_lport_listener(&fwd,
 			    0, &options.fwd_opts) > 0;
 		else
 			ok = channel_cancel_lport_listener(&fwd,
 			    CHANNEL_CANCEL_PORT_STATIC,
 			    &options.fwd_opts) > 0;
+		remove_forward(&options, found_fwd);
 		if (!ok) {
-			logit("Unknown port forwarding.");
+			logit("Could not cancel port forwarding.");
 			goto out;
 		}
 		logit("Canceled forwarding.");
@@ -1001,6 +1017,12 @@ process_cmdline(void)
 		if (!parse_forward(&fwd, s, fwdtype)) {
 			logit("Bad forwarding specification.");
 			goto out;
+		}
+		for (i = 0; i < options.num_forwards; i++) {
+			if (forward_equals(&fwd, &options.forwards[i])) {
+				logit("Duplicate port forwarding.");
+				goto out;
+			}
 		}
 		if (fwdtype == SSH_FWD_LOCAL || fwdtype == SSH_FWD_DYNAMIC) {
 			if (!channel_setup_local_fwd_listener(&fwd,
@@ -1014,6 +1036,8 @@ process_cmdline(void)
 				goto out;
 			}
 		}
+		add_forward(&options, &fwd);
+		freefwd = 0;
 		logit("Forwarding port.");
 	}
 
@@ -1021,10 +1045,12 @@ out:
 	signal(SIGINT, handler);
 	enter_raw_mode(options.request_tty == REQUEST_TTY_FORCE);
 	free(cmd);
-	free(fwd.listen_host);
-	free(fwd.listen_path);
-	free(fwd.connect_host);
-	free(fwd.connect_path);
+	if (freefwd) {
+		free(fwd.listen_host);
+		free(fwd.listen_path);
+		free(fwd.connect_host);
+		free(fwd.connect_path);
+	}
 }
 
 /* reasons to suppress output of an escape command in help output */

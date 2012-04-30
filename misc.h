@@ -37,6 +37,7 @@ struct Forward {
 };
 
 int forward_equals(const struct Forward *, const struct Forward *);
+int forward_listen_equals(const struct Forward *a, const struct Forward *b);
 int bind_permitted(int, uid_t);
 int daemonized(void);
 

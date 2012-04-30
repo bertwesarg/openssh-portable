@@ -1250,6 +1250,31 @@ forward_equals(const struct Forward *a, const struct Forward *b)
 	return 1;
 }
 
+static int
+get_listen_port(const struct Forward *fwd)
+{
+	return (fwd->type == SSH_FWD_REMOTE && fwd->listen_port == 0) ?
+	       fwd->allocated_port : fwd->listen_port;
+}
+
+/*
+ * Compare two forwards, returning non-zero if they are identical in the listen
+ * part or zero otherwise.
+ */
+int
+forward_listen_equals(const struct Forward *a, const struct Forward *b)
+{
+	if (a->type != b->type)
+		return 0;
+	if (strcmp_maybe_null(a->listen_host, b->listen_host) == 0)
+		return 0;
+	if (get_listen_port(a) != get_listen_port(b))
+		return 0;
+	if (strcmp_maybe_null(a->listen_path, b->listen_path) == 0)
+		return 0;
+	return 1;
+}
+
 /* returns 1 if bind to specified port by specified user is permitted */
 int
 bind_permitted(int port, uid_t uid)

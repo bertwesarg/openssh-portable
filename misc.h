@@ -68,6 +68,8 @@ struct expand_spec {
 	const char *keys;
 	const char *repl;
 };
+int	percent_expand_ret(const char *, const struct expand_spec *,
+    Buffer *, Buffer *);
 char	*percent_expand(const char *, const struct expand_spec *expand_specs);
 char	*tohex(const void *, size_t);
 void	 sanitise_stdfd(void);

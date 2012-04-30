@@ -624,6 +624,68 @@ tilde_expand_filename(const char *filename, uid_t uid)
 	return (ret);
 }
 
+int
+percent_expand_ret(const char *string, const struct expand_spec *expand_specs,
+    Buffer *buf, Buffer *err)
+{
+	u_int i, j;
+	const struct expand_spec *spec;
+	char errmsg[256];
+	int ret = 0;
+
+	/* Check keys */
+	for (spec = expand_specs; spec->keys; spec++) {
+		/* keep this fatal */
+		if (spec->repl == NULL)
+			fatal("%s: NULL replacement", __func__);
+	}
+
+	/* Expand string */
+	j = 0;
+	for (i = 0; string[i] != '\0'; i++) {
+		if (string[i] != '%') {
+			continue;
+		}
+		if (j < i) {
+			buffer_append(buf, &string[j], i - j);
+		}
+		i++;
+		/* %% case */
+		if (string[i] == '%') {
+			buffer_append(buf, &string[i], 1);
+		} else if (string[i] == '\0') {
+			snprintf(errmsg, sizeof(errmsg), "%s", "invalid format");
+			ret = 1;
+			goto out;
+		} else {
+			for (spec = expand_specs; spec->keys; spec++) {
+				if (strchr(spec->keys, string[i]) != NULL) {
+					buffer_append(buf, spec->repl,
+					    strlen(spec->repl));
+					break;
+				}
+			}
+			if (!spec->keys) {
+				snprintf(errmsg, sizeof(errmsg),
+				    "unknown key %%%c", string[i]);
+				ret = 1;
+				goto out;
+			}
+		}
+		j = i + 1;
+	}
+	if (j < i)
+		buffer_append(buf, &string[j], i - j);
+
+	/* i points to '\0' */
+	buffer_append(buf, &string[i], 1);
+ out:
+	if (ret)
+		buffer_append(err, errmsg, strlen(errmsg) + 1);
+
+	return ret;
+}
+
 /*
  * Expand a string with a set of %[char] escapes. A number of escapes may be
  * specified as (char *escape_chars, char *replacement) pairs. The list must
@@ -633,52 +695,17 @@ tilde_expand_filename(const char *filename, uid_t uid)
 char *
 percent_expand(const char *string, const struct expand_spec *expand_specs)
 {
-	u_int i, j;
-	const struct expand_spec *spec;
 	Buffer buf;
-
-	/* Check keys */
-	for (spec = expand_specs; spec->keys; spec++) {
-		if (spec->repl == NULL)
-			fatal("%s: NULL replacement", __func__);
-	}
+	Buffer err;
 
 	/* Expand string */
 	buffer_init(&buf);
-	j = 0;
-	for (i = 0; string[i] != '\0'; i++) {
-		if (string[i] != '%') {
-			continue;
-		}
-		if (j < i) {
-			buffer_append(&buf, &string[j], i - j);
-		}
-		i++;
-		/* %% case */
-		if (string[i] == '%') {
-			buffer_append(&buf, &string[i], 1);
-		} else if (string[i] == '\0') {
-			fatal("%s: invalid format", __func__);
-		} else {
-			for (spec = expand_specs; spec->keys; spec++) {
-				if (strchr(spec->keys, string[i]) != NULL) {
-					buffer_append(&buf, spec->repl,
-					    strlen(spec->repl));
-					break;
-				}
-			}
-			if (!spec->keys)
-				fatal("%s: unknown key %%%c", __func__,
-				    string[i]);
-		}
-		j = i + 1;
-	}
-	if (j < i) {
-		buffer_append(&buf, &string[j], i - j);
-	}
+	buffer_init_len(&err, 256);
 
-	/* i points to '\0' */
-	buffer_append(&buf, &string[i], 1);
+	if (percent_expand_ret(string, expand_specs, &buf, &err) != 0) {
+		fatal("%s: %s", __func__, (char *)buffer_ptr(&err));
+	}
+	buffer_free(&err);
 
 	/* reuse alloc from buffer, but compact it down to actual size */
 	return realloc(buffer_ptr(&buf), buffer_len(&buf));

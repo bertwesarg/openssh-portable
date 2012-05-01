@@ -40,8 +40,8 @@ PATHS= -DSSHDIR=\"$(sysconfdir)\" \
 	-D_PATH_SSH_PIDDIR=\"$(piddir)\" \
 	-D_PATH_PRIVSEP_CHROOT_DIR=\"$(PRIVSEP_PATH)\"
 
-CC=@CC@
-LD=@LD@
+CC=@echo " CC   " $@; @CC@
+LD=@echo " LD   " $@; @LD@
 CFLAGS=@CFLAGS@
 CPPFLAGS=-I. -I$(srcdir) @CPPFLAGS@ $(PATHS) @DEFS@
 LIBS=@LIBS@
@@ -50,7 +50,7 @@ GSSLIBS=@GSSLIBS@
 SSHLIBS=@SSHLIBS@
 SSHDLIBS=@SSHDLIBS@
 LIBEDIT=@LIBEDIT@
-AR=@AR@
+AR=@echo " AR   " $@; @AR@
 AWK=@AWK@
 RANLIB=@RANLIB@
 INSTALL=@INSTALL@
@@ -144,9 +144,9 @@ FIXALGORITHMSCMD= $(SHELL) $(srcdir)/fixalgorithms $(SED) \
 
 all: $(CONFIGFILES) $(MANPAGES) $(TARGETS)
 
-$(LIBSSH_OBJS): Makefile.in config.h
-$(SSHOBJS): Makefile.in config.h
-$(SSHDOBJS): Makefile.in config.h
+$(LIBSSH_OBJS): Makefile config.h
+$(SSHOBJS): Makefile config.h
+$(SSHDOBJS): Makefile config.h
 
 .c.o:
 	$(CC) $(CFLAGS) $(CPPFLAGS) -c $< -o $@
@@ -198,7 +198,7 @@ logintest: logintest.o $(LIBCOMPAT) libssh.a loginrec.o
 	$(LD) -o $@ logintest.o $(LDFLAGS) loginrec.o -lopenbsd-compat -lssh $(LIBS)
 
 $(MANPAGES): $(MANPAGES_IN)
-	if test "$(MANTYPE)" = "cat"; then \
+	@if test "$(MANTYPE)" = "cat"; then \
 		manpage=$(srcdir)/`echo $@ | sed 's/\.[1-9]\.out$$/\.0/'`; \
 	else \
 		manpage=$(srcdir)/`echo $@ | sed 's/\.out$$//'`; \
@@ -649,3 +649,6 @@ package: $(CONFIGFILES) $(MANPAGES) $(TARGETS)
 	if [ "@MAKE_PACKAGE_SUPPORTED@" = yes ]; then \
 		sh buildpkg.sh; \
 	fi
+
+Makefile: Makefile.in $(top_srcdir)/config.status
+	@cd $(top_srcdir) && ./config.status Makefile

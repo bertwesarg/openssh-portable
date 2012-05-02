@@ -147,6 +147,7 @@ struct mux_master_state {
 #define MUX_C_STOP_LISTENING	0x10000009
 #define MUX_C_LIST_FWDS		0x1000000a
 #define MUX_C_LIST_SESSIONS	0x1000000b
+#define MUX_C_INFO		0x1000000c
 #define MUX_C_PROXY		0x1000000f
 #define MUX_S_OK		0x80000001
 #define MUX_S_PERMISSION_DENIED	0x80000002
@@ -180,6 +181,7 @@ static int process_mux_stdio_fwd(u_int, Channel *, Buffer *, Buffer *);
 static int process_mux_stop_listening(u_int, Channel *, Buffer *, Buffer *);
 static int process_mux_list_fwds(u_int, Channel *, Buffer *, Buffer *);
 static int process_mux_list_sessions(u_int, Channel *, Buffer *, Buffer *);
+static int process_mux_info(u_int, Channel *, Buffer *, Buffer *);
 static int process_mux_proxy(u_int, Channel *, Buffer *, Buffer *);
 
 static const struct {
@@ -196,6 +198,7 @@ static const struct {
 	{ MUX_C_STOP_LISTENING, process_mux_stop_listening },
 	{ MUX_C_LIST_FWDS, process_mux_list_fwds },
 	{ MUX_C_LIST_SESSIONS, process_mux_list_sessions },
+	{ MUX_C_INFO, process_mux_info },
 	{ MUX_C_PROXY, process_mux_proxy },
 	{ 0, NULL }
 };
@@ -1133,6 +1136,63 @@ process_mux_list_sessions(u_int rid, Channel *c, Buffer *m, Buffer *r)
 	buffer_put_int(r, rid);
 
 	channel_for_each(process_open_channel, r);
+
+	return 0;
+}
+
+static int
+process_mux_info(u_int rid, Channel *c, Buffer *m, Buffer *r)
+{
+	extern uid_t original_real_uid;
+	Buffer res, err;
+	char *infofmt;
+	struct passwd *pw;
+	char thishost[NI_MAXHOST], shorthost[NI_MAXHOST], portstr[NI_MAXSERV];
+	char username[NI_MAXHOST];
+	char userhome[MAXPATHLEN];
+	struct expand_spec specs[] = {
+		{ "d", userhome },
+		{ "h", options.hostname },
+		{ "l", thishost },
+		{ "L", shorthost },
+		{ "r", options.user },
+		{ "p", portstr },
+		{ "u", username },
+		{ NULL, NULL }
+	};
+
+	debug("%s: channel %d: info", __func__, c->self);
+
+	pw = getpwuid(original_real_uid);
+	strlcpy(userhome, pw->pw_dir, sizeof(userhome));
+	strlcpy(username, pw->pw_name, sizeof(username));
+	if (gethostname(thishost, sizeof(thishost)) == -1)
+		fatal("gethostname: %s", strerror(errno));
+	strlcpy(shorthost, thishost, sizeof(shorthost));
+	shorthost[strcspn(thishost, ".")] = '\0';
+	snprintf(portstr, sizeof(portstr), "%d", options.port);
+
+	infofmt = buffer_get_cstring_ret(m, NULL);
+	buffer_init(&res);
+	buffer_init_len(&err, 256);
+	if (percent_expand_ret(infofmt, specs, &res, &err) != 0) {
+		free(infofmt);
+		buffer_free(&res);
+
+		buffer_put_int(r, MUX_S_FAILURE);
+		buffer_put_int(r, rid);
+		buffer_put_cstring(r, buffer_ptr(&err));
+		buffer_free(&err);
+		return 0;
+	}
+	free(infofmt);
+	buffer_free(&err);
+
+	/* prepare reply */
+	buffer_put_int(r, MUX_S_RESULT);
+	buffer_put_int(r, rid);
+	buffer_put_cstring(r, buffer_ptr(&res));
+	buffer_free(&res);
 
 	return 0;
 }

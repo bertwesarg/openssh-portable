@@ -145,6 +145,7 @@ struct mux_master_state {
 #define MUX_C_CLOSE_FWD		0x10000007
 #define MUX_C_NEW_STDIO_FWD	0x10000008
 #define MUX_C_STOP_LISTENING	0x10000009
+#define MUX_C_LIST_FWDS		0x1000000a
 #define MUX_C_PROXY		0x1000000f
 #define MUX_S_OK		0x80000001
 #define MUX_S_PERMISSION_DENIED	0x80000002
@@ -154,12 +155,16 @@ struct mux_master_state {
 #define MUX_S_SESSION_OPENED	0x80000006
 #define MUX_S_REMOTE_PORT	0x80000007
 #define MUX_S_TTY_ALLOC_FAIL	0x80000008
+#define MUX_S_RESULT		0x80000009
 #define MUX_S_PROXY		0x8000000f
 
 /* type codes for MUX_C_OPEN_FWD and MUX_C_CLOSE_FWD */
 #define MUX_FWD_LOCAL   SSH_FWD_LOCAL
 #define MUX_FWD_REMOTE  SSH_FWD_REMOTE
 #define MUX_FWD_DYNAMIC SSH_FWD_DYNAMIC
+
+/* above 65535 */
+#define MUX_FWD_PORT_STREAMLOCAL (u_int)PORT_STREAMLOCAL
 
 static void mux_session_confirm(int, int, void *);
 static void mux_stdio_confirm(int, int, void *);
@@ -172,6 +177,7 @@ static int process_mux_open_fwd(u_int, Channel *, Buffer *, Buffer *);
 static int process_mux_close_fwd(u_int, Channel *, Buffer *, Buffer *);
 static int process_mux_stdio_fwd(u_int, Channel *, Buffer *, Buffer *);
 static int process_mux_stop_listening(u_int, Channel *, Buffer *, Buffer *);
+static int process_mux_list_fwds(u_int, Channel *, Buffer *, Buffer *);
 static int process_mux_proxy(u_int, Channel *, Buffer *, Buffer *);
 
 static const struct {
@@ -186,6 +192,7 @@ static const struct {
 	{ MUX_C_CLOSE_FWD, process_mux_close_fwd },
 	{ MUX_C_NEW_STDIO_FWD, process_mux_stdio_fwd },
 	{ MUX_C_STOP_LISTENING, process_mux_stop_listening },
+	{ MUX_C_LIST_FWDS, process_mux_list_fwds },
 	{ MUX_C_PROXY, process_mux_proxy },
 	{ 0, NULL }
 };
@@ -1048,6 +1055,35 @@ process_mux_stop_listening(u_int rid, Channel *c, Buffer *m, Buffer *r)
 	/* prepare reply */
 	buffer_put_int(r, MUX_S_OK);
 	buffer_put_int(r, rid);
+
+	return 0;
+}
+
+static int
+process_mux_list_fwds(u_int rid, Channel *c, Buffer *m, Buffer *r)
+{
+	int i;
+
+	debug("%s: channel %d: list forwardings", __func__, c->self);
+
+	/* prepare reply */
+	buffer_put_int(r, MUX_S_RESULT);
+	buffer_put_int(r, rid);
+
+	for (i = 0; i < options.num_forwards; i++) {
+		struct Forward *fwd = &options.forwards[i];
+		buffer_put_int(r, fwd->id);
+		buffer_put_int(r, fwd->type);
+		buffer_put_cstring(r, fwd->listen_port == PORT_STREAMLOCAL ?
+		    fwd->listen_path : fwd->listen_host ? fwd->listen_host : "");
+		buffer_put_int(r, (u_int)fwd->listen_port);
+		buffer_put_cstring(r, fwd->connect_port == PORT_STREAMLOCAL ?
+		    fwd->connect_path : fwd->connect_host ? fwd->connect_host : "");
+		buffer_put_int(r, (u_int)fwd->connect_port);
+		if (fwd->type == MUX_FWD_REMOTE && fwd->listen_port == 0) {
+			buffer_put_int(r, fwd->allocated_port);
+		}
+	}
 
 	return 0;
 }

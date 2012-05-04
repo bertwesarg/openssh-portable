@@ -1942,6 +1942,7 @@ ssh_session2_open(void)
 {
 	Channel *c;
 	int window, packetmax, in, out, err;
+	char *session_desc;
 
 	if (stdin_null_flag) {
 		in = open(_PATH_DEVNULL, O_RDONLY);
@@ -1968,10 +1969,30 @@ ssh_session2_open(void)
 		window >>= 1;
 		packetmax >>= 1;
 	}
+
+	if (subsystem_flag) {
+		xasprintf(&session_desc, "subsystem-session(%s%s%s): %s",
+		    tty_flag ? "tty" : "",
+		    options.forward_x11 ? (tty_flag ? ", X" : "X") : "",
+		    options.forward_agent ? (tty_flag || options.forward_x11 ? ", agent" : "agent") : "",
+		    (char *)buffer_ptr(&command));
+	} else if (buffer_len(&command) > 0) {
+		xasprintf(&session_desc, "exec-session(%s%s%s): %s",
+		    tty_flag ? "tty" : "",
+		    options.forward_x11 ? (tty_flag ? ", X" : "X") : "",
+		    options.forward_agent ? (tty_flag || options.forward_x11 ? ", agent" : "agent") : "",
+		    (char *)buffer_ptr(&command));
+	} else {
+		xasprintf(&session_desc, "shell-session(%s%s%s)",
+		    tty_flag ? "tty" : "",
+		    options.forward_x11 ? (tty_flag ? ", X" : "X") : "",
+		    options.forward_agent ? (tty_flag || options.forward_x11 ? ", agent" : "agent") : "");
+	}
 	c = channel_new(
 	    "session", SSH_CHANNEL_OPENING, in, out, err,
 	    window, packetmax, CHAN_EXTENDED_WRITE,
-	    "client-session", /*nonblock*/0);
+	    session_desc, /*nonblock*/0);
+	free(session_desc);
 
 	debug3("ssh_session2_open: channel_new: %d", c->self);
 

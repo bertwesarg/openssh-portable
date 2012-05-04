@@ -322,6 +322,7 @@ process_mux_new_session(u_int rid, Channel *c, Buffer *m, Buffer *r)
 	char *reserved, *cmd, *cp;
 	u_int i, j, len, env_len, escape_char, window, packetmax;
 	int new_fd[3];
+	char *session_desc;
 
 	/* Reply for SSHMUX_COMMAND_OPEN */
 	cctx = xcalloc(1, sizeof(*cctx));
@@ -460,9 +461,28 @@ process_mux_new_session(u_int rid, Channel *c, Buffer *m, Buffer *r)
 		packetmax >>= 1;
 	}
 
+	if (cctx->want_subsys) {
+		xasprintf(&session_desc, "subsystem-session(%s%s%s): %s",
+		    cctx->want_tty ? "tty" : "",
+		    cctx->want_x_fwd ? (cctx->want_tty ? ", X" : "X") : "",
+		    cctx->want_agent_fwd ? (cctx->want_tty || cctx->want_x_fwd ? ", agent" : "agent") : "",
+		    (char *)buffer_ptr(&cctx->cmd));
+	} else if (buffer_len(&cctx->cmd) > 0) {
+		xasprintf(&session_desc, "exec-session(%s%s%s): %s",
+		    cctx->want_tty ? "tty" : "",
+		    cctx->want_x_fwd ? (cctx->want_tty ? ", X" : "X") : "",
+		    cctx->want_agent_fwd ? (cctx->want_tty || cctx->want_x_fwd ? ", agent" : "agent") : "",
+		    (char *)buffer_ptr(&cctx->cmd));
+	} else {
+		xasprintf(&session_desc, "shell-session(%s%s%s)",
+		    cctx->want_tty ? "tty" : "",
+		    cctx->want_x_fwd ? (cctx->want_tty ? ", X" : "X") : "",
+		    cctx->want_agent_fwd ? (cctx->want_tty || cctx->want_x_fwd ? ", agent" : "agent") : "");
+	}
 	nc = channel_new("session", SSH_CHANNEL_OPENING,
 	    new_fd[0], new_fd[1], new_fd[2], window, packetmax,
-	    CHAN_EXTENDED_WRITE, "client-session", /*nonblock*/0);
+	    CHAN_EXTENDED_WRITE, session_desc, /*nonblock*/0);
+	free(session_desc);
 
 	nc->ctl_chan = c->self;		/* link session -> control channel */
 	c->remote_id = nc->self; 	/* link control -> session channel */

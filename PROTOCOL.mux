@@ -205,7 +205,27 @@ socket path name.
 The allocated_port entry is only there for remote forwardings with a listen port
 equal zero.
 
-10. Status messages
+10. Request a list of open sessions from the mux listener
+
+A client may request the master to send the list of open channels.
+
+	uint32	MUX_C_LIST_SESSIONS
+	uint32	request id
+
+The server will reply with a MUX_S_RESULT and the following payload:
+
+	uint32	MUX_S_RESULT
+	uint32	client request id
+	[ uint32	channel id
+	  uint32	channel type
+	  uint32	remote id
+	  uint32	controlling channel
+	  string	type name
+	  string	remote name ]...
+
+See the MUX_CHANNEL_* constants for available channel types.
+
+11. Status messages
 
 The MUX_S_OK message is empty:
 
@@ -228,7 +248,7 @@ The MUX_S_PERMISSION_DENIED and MUX_S_FAILURE include a reason:
 	uint32	client request id
 	string	reason
 
-11. Protocol numbers
+12. Protocol numbers
 
 #define MUX_MSG_HELLO		0x00000001
 #define MUX_C_NEW_SESSION	0x10000002
@@ -239,6 +259,7 @@ The MUX_S_PERMISSION_DENIED and MUX_S_FAILURE include a reason:
 #define MUX_C_NEW_STDIO_FWD	0x10000008
 #define MUX_C_STOP_LISTENING	0x10000009
 #define MUX_C_LIST_FWDS		0x1000000a
+#define MUX_C_LIST_SESSIONS	0x1000000b
 #define MUX_S_OK		0x80000001
 #define MUX_S_PERMISSION_DENIED	0x80000002
 #define MUX_S_FAILURE		0x80000003
@@ -255,8 +276,20 @@ The MUX_S_PERMISSION_DENIED and MUX_S_FAILURE include a reason:
 
 #define MUX_FWD_PORT_STREAMLOCAL (unsigned int) -2
 
+#define MUX_CHANNEL_OPENING		3
+#define MUX_CHANNEL_OPEN		4
+#define MUX_CHANNEL_X11_OPEN		7
+#define MUX_CHANNEL_INPUT_DRAINING	8
+#define MUX_CHANNEL_OUTPUT_DRAINING	9
+#define MUX_CHANNEL_LARVAL		10
+#define MUX_CHANNEL_CONNECTING		12
+#define MUX_CHANNEL_DYNAMIC		13
+#define MUX_CHANNEL_MUX_CLIENT		16
+#define MUX_CHANNEL_MUX_PROXY		20
+
+
 XXX TODO
-XXX extended status (e.g. report open channels)
+XXX extended status
 XXX lock (maybe)
 XXX watch in/out traffic (pre/post crypto)
 XXX inject packet (what about replies)

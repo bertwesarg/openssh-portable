@@ -146,6 +146,7 @@ struct mux_master_state {
 #define MUX_C_NEW_STDIO_FWD	0x10000008
 #define MUX_C_STOP_LISTENING	0x10000009
 #define MUX_C_LIST_FWDS		0x1000000a
+#define MUX_C_LIST_SESSIONS	0x1000000b
 #define MUX_C_PROXY		0x1000000f
 #define MUX_S_OK		0x80000001
 #define MUX_S_PERMISSION_DENIED	0x80000002
@@ -178,6 +179,7 @@ static int process_mux_close_fwd(u_int, Channel *, Buffer *, Buffer *);
 static int process_mux_stdio_fwd(u_int, Channel *, Buffer *, Buffer *);
 static int process_mux_stop_listening(u_int, Channel *, Buffer *, Buffer *);
 static int process_mux_list_fwds(u_int, Channel *, Buffer *, Buffer *);
+static int process_mux_list_sessions(u_int, Channel *, Buffer *, Buffer *);
 static int process_mux_proxy(u_int, Channel *, Buffer *, Buffer *);
 
 static const struct {
@@ -193,6 +195,7 @@ static const struct {
 	{ MUX_C_NEW_STDIO_FWD, process_mux_stdio_fwd },
 	{ MUX_C_STOP_LISTENING, process_mux_stop_listening },
 	{ MUX_C_LIST_FWDS, process_mux_list_fwds },
+	{ MUX_C_LIST_SESSIONS, process_mux_list_sessions },
 	{ MUX_C_PROXY, process_mux_proxy },
 	{ 0, NULL }
 };
@@ -1104,6 +1107,32 @@ process_mux_list_fwds(u_int rid, Channel *c, Buffer *m, Buffer *r)
 			buffer_put_int(r, fwd->allocated_port);
 		}
 	}
+
+	return 0;
+}
+
+static void
+process_open_channel(Channel *c, void *ctx)
+{
+	Buffer *buf = (Buffer *)ctx;
+	buffer_put_int(buf, c->self);
+	buffer_put_int(buf, c->type);
+	buffer_put_int(buf, c->remote_id);
+	buffer_put_int(buf, c->ctl_chan);
+	buffer_put_cstring(buf, c->ctype);
+	buffer_put_cstring(buf, c->remote_name);
+}
+
+static int
+process_mux_list_sessions(u_int rid, Channel *c, Buffer *m, Buffer *r)
+{
+	debug("%s: channel %d: list sessions", __func__, c->self);
+
+	/* prepare reply */
+	buffer_put_int(r, MUX_S_RESULT);
+	buffer_put_int(r, rid);
+
+	channel_for_each(process_open_channel, r);
 
 	return 0;
 }

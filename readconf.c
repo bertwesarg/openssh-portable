@@ -318,24 +318,27 @@ static struct {
  */
 
 void
-add_local_forward(Options *options, const struct Forward *newfwd)
+add_forward(Options *options, const struct Forward *newfwd)
 {
 	struct Forward *fwd;
 	extern uid_t original_real_uid;
 	int i;
 
-	if (!bind_permitted(newfwd->listen_port, original_real_uid) &&
-	    newfwd->listen_path == NULL)
-		fatal("Privileged ports can only be forwarded by root.");
+	if (newfwd->type != SSH_FWD_REMOTE) {
+		if (!bind_permitted(newfwd->listen_port, original_real_uid) &&
+		    newfwd->listen_path == NULL)
+			fatal("Privileged ports can only be forwarded by root.");
+	}
+
 	/* Don't add duplicates */
-	for (i = 0; i < options->num_local_forwards; i++) {
-		if (forward_equals(newfwd, options->local_forwards + i))
+	for (i = 0; i < options->num_forwards; i++) {
+		if (forward_equals(newfwd, options->forwards + i))
 			return;
 	}
-	options->local_forwards = xreallocarray(options->local_forwards,
-	    options->num_local_forwards + 1,
-	    sizeof(*options->local_forwards));
-	fwd = &options->local_forwards[options->num_local_forwards++];
+	options->forwards = xreallocarray(options->forwards,
+	    options->num_forwards + 1,
+	    sizeof(*options->forwards));
+	fwd = &options->forwards[options->num_forwards++];
 
 	fwd->type = newfwd->type;
 	fwd->listen_host = newfwd->listen_host;
@@ -344,38 +347,11 @@ add_local_forward(Options *options, const struct Forward *newfwd)
 	fwd->connect_host = newfwd->connect_host;
 	fwd->connect_port = newfwd->connect_port;
 	fwd->connect_path = newfwd->connect_path;
-}
 
-/*
- * Adds a remote TCP/IP port forward to options.  Never returns if there is
- * an error.
- */
-
-void
-add_remote_forward(Options *options, const struct Forward *newfwd)
-{
-	struct Forward *fwd;
-	int i;
-
-	/* Don't add duplicates */
-	for (i = 0; i < options->num_remote_forwards; i++) {
-		if (forward_equals(newfwd, options->remote_forwards + i))
-			return;
+	if (newfwd->type == SSH_FWD_REMOTE) {
+		fwd->handle = newfwd->handle;
+		fwd->allocated_port = 0;
 	}
-	options->remote_forwards = xreallocarray(options->remote_forwards,
-	    options->num_remote_forwards + 1,
-	    sizeof(*options->remote_forwards));
-	fwd = &options->remote_forwards[options->num_remote_forwards++];
-
-	fwd->type = newfwd->type;
-	fwd->listen_host = newfwd->listen_host;
-	fwd->listen_port = newfwd->listen_port;
-	fwd->listen_path = newfwd->listen_path;
-	fwd->connect_host = newfwd->connect_host;
-	fwd->connect_port = newfwd->connect_port;
-	fwd->connect_path = newfwd->connect_path;
-	fwd->handle = newfwd->handle;
-	fwd->allocated_port = 0;
 }
 
 static void
@@ -383,28 +359,17 @@ clear_forwardings(Options *options)
 {
 	int i;
 
-	for (i = 0; i < options->num_local_forwards; i++) {
-		free(options->local_forwards[i].listen_host);
-		free(options->local_forwards[i].listen_path);
-		free(options->local_forwards[i].connect_host);
-		free(options->local_forwards[i].connect_path);
+	for (i = 0; i < options->num_forwards; i++) {
+		free(options->forwards[i].listen_host);
+		free(options->forwards[i].listen_path);
+		free(options->forwards[i].connect_host);
+		free(options->forwards[i].connect_path);
 	}
-	if (options->num_local_forwards > 0) {
-		free(options->local_forwards);
-		options->local_forwards = NULL;
+	if (options->num_forwards > 0) {
+		free(options->forwards);
+		options->forwards = NULL;
 	}
-	options->num_local_forwards = 0;
-	for (i = 0; i < options->num_remote_forwards; i++) {
-		free(options->remote_forwards[i].listen_host);
-		free(options->remote_forwards[i].listen_path);
-		free(options->remote_forwards[i].connect_host);
-		free(options->remote_forwards[i].connect_path);
-	}
-	if (options->num_remote_forwards > 0) {
-		free(options->remote_forwards);
-		options->remote_forwards = NULL;
-	}
-	options->num_remote_forwards = 0;
+	options->num_forwards = 0;
 	options->tun_open = SSH_TUNMODE_NO;
 }
 
@@ -1294,13 +1259,8 @@ parse_keytypes:
 			fatal("%.200s line %d: Bad forwarding specification.",
 			    filename, linenum);
 
-		if (*activep) {
-			if (opcode == oLocalForward ||
-			    opcode == oDynamicForward)
-				add_local_forward(options, &fwd);
-			else if (opcode == oRemoteForward)
-				add_remote_forward(options, &fwd);
-		}
+		if (*activep)
+			add_forward(options, &fwd);
 		break;
 
 	case oClearAllForwardings:
@@ -1837,10 +1797,8 @@ initialize_options(Options * options)
 	options->escape_char = -1;
 	options->num_system_hostfiles = 0;
 	options->num_user_hostfiles = 0;
-	options->local_forwards = NULL;
-	options->num_local_forwards = 0;
-	options->remote_forwards = NULL;
-	options->num_remote_forwards = 0;
+	options->forwards = NULL;
+	options->num_forwards = 0;
 	options->log_level = SYSLOG_LEVEL_NOT_SET;
 	options->preferred_authentications = NULL;
 	options->bind_address = NULL;
@@ -2464,7 +2422,7 @@ dump_cfg_strarray_oneline(OpCodes code, u_int count, char **vals)
 }
 
 static void
-dump_cfg_forwards(OpCodes code, u_int count, const struct Forward *fwds)
+dump_cfg_forwards(u_int count, const struct Forward *fwds)
 {
 	const struct Forward *fwd;
 	u_int i;
@@ -2472,13 +2430,15 @@ dump_cfg_forwards(OpCodes code, u_int count, const struct Forward *fwds)
 	/* oDynamicForward */
 	for (i = 0; i < count; i++) {
 		fwd = &fwds[i];
-		if (code == oDynamicForward && fwd->connect_host != NULL &&
+		if (fwd->type == SSH_FWD_DYNAMIC && fwd->connect_host != NULL &&
 		    strcmp(fwd->connect_host, "socks") != 0)
 			continue;
-		if (code == oLocalForward && fwd->connect_host != NULL &&
+		if (fwd->type == SSH_FWD_LOCAL && fwd->connect_host != NULL &&
 		    strcmp(fwd->connect_host, "socks") == 0)
 			continue;
-		printf("%s", lookup_opcode_name(code));
+		printf("%s", lookup_opcode_name(fwd->type == SSH_FWD_LOCAL ? oLocalForward :
+						fwd->type == SSH_FWD_REMOTE ? oRemoteForward :
+									      oDynamicForward));
 		if (fwd->listen_port == PORT_STREAMLOCAL)
 			printf(" %s", fwd->listen_path);
 		else if (fwd->listen_host == NULL)
@@ -2487,7 +2447,7 @@ dump_cfg_forwards(OpCodes code, u_int count, const struct Forward *fwds)
 			printf(" [%s]:%d",
 			    fwd->listen_host, fwd->listen_port);
 		}
-		if (code != oDynamicForward) {
+		if (fwd->type != SSH_FWD_DYNAMIC) {
 			if (fwd->connect_port == PORT_STREAMLOCAL)
 				printf(" %s", fwd->connect_path);
 			else if (fwd->connect_host == NULL)
@@ -2594,9 +2554,7 @@ dump_client_config(Options *o, const char *host)
 	dump_cfg_string(oXAuthLocation, o->xauth_location);
 
 	/* Forwards */
-	dump_cfg_forwards(oDynamicForward, o->num_local_forwards, o->local_forwards);
-	dump_cfg_forwards(oLocalForward, o->num_local_forwards, o->local_forwards);
-	dump_cfg_forwards(oRemoteForward, o->num_remote_forwards, o->remote_forwards);
+	dump_cfg_forwards(o->num_forwards, o->forwards);
 
 	/* String array options */
 	dump_cfg_strarray(oIdentityFile, o->num_identity_files, o->identity_files);

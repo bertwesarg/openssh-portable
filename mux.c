@@ -567,13 +567,17 @@ mux_confirm_remote_forward(int type, u_int32_t seq, void *ctxt)
 		return;
 	}
 	buffer_init(&out);
-	if (fctx->fid >= options.num_remote_forwards ||
-	    (options.remote_forwards[fctx->fid].connect_path == NULL &&
-	    options.remote_forwards[fctx->fid].connect_host == NULL)) {
+	if (fctx->fid >= options.num_forwards ||
+	    (options.forwards[fctx->fid].connect_path == NULL &&
+	    options.forwards[fctx->fid].connect_host == NULL)) {
 		xasprintf(&failmsg, "unknown forwarding id %d", fctx->fid);
 		goto fail;
 	}
-	rfwd = &options.remote_forwards[fctx->fid];
+	rfwd = &options.forwards[fctx->fid];
+	if (rfwd->type != SSH_FWD_REMOTE) {
+		xasprintf(&failmsg, "non-remote forwarding id %d", fctx->fid);
+		goto fail;
+	}
 	debug("%s: %s for: listen %d, connect %s:%d", __func__,
 	    type == SSH2_MSG_REQUEST_SUCCESS ? "success" : "failure",
 	    rfwd->listen_port, rfwd->connect_path ? rfwd->connect_path :
@@ -709,37 +713,23 @@ process_mux_open_fwd(u_int rid, Channel *c, Buffer *m, Buffer *r)
 	}
 
 	/* Skip forwards that have already been requested */
-	switch (fwd.type) {
-	case MUX_FWD_LOCAL:
-	case MUX_FWD_DYNAMIC:
-		for (i = 0; i < options.num_local_forwards; i++) {
-			if (forward_equals(&fwd,
-			    options.local_forwards + i)) {
- exists:
-				debug2("%s: found existing forwarding",
-				    __func__);
-				buffer_put_int(r, MUX_S_OK);
-				buffer_put_int(r, rid);
-				goto out;
-			}
+	for (i = 0; i < options.num_forwards; i++) {
+		if (!forward_equals(&fwd, &options.forwards[i]))
+			continue;
+		if (fwd.type == MUX_FWD_REMOTE && fwd.listen_port == 0) {
+			debug2("%s: found allocated port",
+			    __func__);
+			buffer_put_int(r, MUX_S_REMOTE_PORT);
+			buffer_put_int(r, rid);
+			buffer_put_int(r,
+			    options.forwards[i].allocated_port);
+		} else {
+			debug2("%s: found existing forwarding",
+			    __func__);
+			buffer_put_int(r, MUX_S_OK);
+			buffer_put_int(r, rid);
 		}
-		break;
-	case MUX_FWD_REMOTE:
-		for (i = 0; i < options.num_remote_forwards; i++) {
-			if (forward_equals(&fwd,
-			    options.remote_forwards + i)) {
-				if (fwd.listen_port != 0)
-					goto exists;
-				debug2("%s: found allocated port",
-				    __func__);
-				buffer_put_int(r, MUX_S_REMOTE_PORT);
-				buffer_put_int(r, rid);
-				buffer_put_int(r,
-				    options.remote_forwards[i].allocated_port);
-				goto out;
-			}
-		}
-		break;
+		goto out;
 	}
 
 	if (options.control_master == SSHCTL_MASTER_ASK ||
@@ -763,7 +753,7 @@ process_mux_open_fwd(u_int rid, Channel *c, Buffer *m, Buffer *r)
 			buffer_put_cstring(r, "Port forwarding failed");
 			goto out;
 		}
-		add_local_forward(&options, &fwd);
+		add_forward(&options, &fwd);
 		freefwd = 0;
 	} else {
 		struct mux_channel_confirm_ctx *fctx;
@@ -771,11 +761,11 @@ process_mux_open_fwd(u_int rid, Channel *c, Buffer *m, Buffer *r)
 		fwd.handle = channel_request_remote_forwarding(&fwd);
 		if (fwd.handle < 0)
 			goto fail;
-		add_remote_forward(&options, &fwd);
+		add_forward(&options, &fwd);
 		fctx = xcalloc(1, sizeof(*fctx));
 		fctx->cid = c->self;
 		fctx->rid = rid;
-		fctx->fid = options.num_remote_forwards - 1;
+		fctx->fid = options.num_forwards - 1;
 		client_register_global_confirm(mux_confirm_remote_forward,
 		    fctx);
 		freefwd = 0;
@@ -845,26 +835,11 @@ process_mux_close_fwd(u_int rid, Channel *c, Buffer *m, Buffer *r)
 
 	/* make sure this has been requested */
 	found_fwd = NULL;
-	switch (fwd.type) {
-	case MUX_FWD_LOCAL:
-	case MUX_FWD_DYNAMIC:
-		for (i = 0; i < options.num_local_forwards; i++) {
-			if (forward_equals(&fwd,
-			    options.local_forwards + i)) {
-				found_fwd = options.local_forwards + i;
-				break;
-			}
+	for (i = 0; i < options.num_forwards; i++) {
+		if (forward_equals(&fwd, &options.forwards[i])) {
+			found_fwd = &options.forwards[i];
+			break;
 		}
-		break;
-	case MUX_FWD_REMOTE:
-		for (i = 0; i < options.num_remote_forwards; i++) {
-			if (forward_equals(&fwd,
-			    options.remote_forwards + i)) {
-				found_fwd = options.remote_forwards + i;
-				break;
-			}
-		}
-		break;
 	}
 
 	if (found_fwd == NULL)
@@ -872,7 +847,7 @@ process_mux_close_fwd(u_int rid, Channel *c, Buffer *m, Buffer *r)
 	else if (found_fwd->type == MUX_FWD_REMOTE) {
 		/*
 		 * This shouldn't fail unless we confused the host/port
-		 * between options.remote_forwards and permitted_opens.
+		 * between options.forwards and permitted_opens.
 		 * However, for dynamic allocated listen ports we need
 		 * to use the actual listen port.
 		 */
@@ -1757,19 +1732,13 @@ mux_client_forwards(int fd, int cancel_flag)
 {
 	int i, ret = 0;
 
-	debug3("%s: %s forwardings: %d local, %d remote", __func__,
-	    cancel_flag ? "cancel" : "request",
-	    options.num_local_forwards, options.num_remote_forwards);
+	debug3("%s: %s %d forwardings", __func__,
+	    cancel_flag ? "cancel" : "request", options.num_forwards);
 
 	/* XXX ExitOnForwardingFailure */
-	for (i = 0; i < options.num_local_forwards; i++) {
+	for (i = 0; i < options.num_forwards; i++) {
 		if (mux_client_forward(fd, cancel_flag,
-		    options.local_forwards + i) != 0)
-			ret = -1;
-	}
-	for (i = 0; i < options.num_remote_forwards; i++) {
-		if (mux_client_forward(fd, cancel_flag,
-		    options.remote_forwards + i) != 0)
+		    &options.forwards[i]) != 0)
 			ret = -1;
 	}
 	return ret;

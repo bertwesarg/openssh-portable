@@ -103,13 +103,9 @@ typedef struct {
 	int	add_keys_to_agent;
 	char   *identity_agent;		/* Optional path to ssh-agent socket */
 
-	/* Local TCP/IP forward requests. */
-	int     num_local_forwards;
-	struct Forward *local_forwards;
-
-	/* Remote TCP/IP forward requests. */
-	int     num_remote_forwards;
-	struct Forward *remote_forwards;
+	/* Local and remote TCP/IP forward requests. */
+	int     num_forwards;
+	struct Forward *forwards;
 	int	clear_forwardings;
 
 	/* stdio forwarding (-W) host and port */
@@ -208,8 +204,7 @@ int	 option_clear_or_none(const char *);
 void	 dump_client_config(Options *o, const char *host);
 
 int	 parse_forward(struct Forward *, const char *, u_int);
-void	 add_local_forward(Options *, const struct Forward *);
-void	 add_remote_forward(Options *, const struct Forward *);
+void	 add_forward(Options *, const struct Forward *);
 void	 add_identity_file(Options *, const char *, const char *, int);
 void	 add_certificate_file(Options *, const char *, int);
 

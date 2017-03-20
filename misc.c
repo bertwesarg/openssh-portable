@@ -631,40 +631,27 @@ tilde_expand_filename(const char *filename, uid_t uid)
  * allocated by xmalloc.
  */
 char *
-percent_expand(const char *string, ...)
+percent_expand(const char *string, const struct expand_spec *expand_specs)
 {
-#define EXPAND_MAX_KEYS	16
-	u_int num_keys, i, j, k;
-	struct {
-		const char *key;
-		const char *repl;
-	} keys[EXPAND_MAX_KEYS];
+	u_int i, j;
+	const struct expand_spec *spec;
 	Buffer buf;
-	va_list ap;
 
-	/* Gather keys */
-	va_start(ap, string);
-	for (num_keys = 0; num_keys < EXPAND_MAX_KEYS; num_keys++) {
-		keys[num_keys].key = va_arg(ap, char *);
-		if (keys[num_keys].key == NULL)
-			break;
-		keys[num_keys].repl = va_arg(ap, char *);
-		if (keys[num_keys].repl == NULL)
+	/* Check keys */
+	for (spec = expand_specs; spec->keys; spec++) {
+		if (spec->repl == NULL)
 			fatal("%s: NULL replacement", __func__);
 	}
-	if (num_keys == EXPAND_MAX_KEYS && va_arg(ap, char *) != NULL)
-		fatal("%s: too many keys", __func__);
-	va_end(ap);
 
 	/* Expand string */
 	buffer_init(&buf);
-	k = 0;
+	j = 0;
 	for (i = 0; string[i] != '\0'; i++) {
 		if (string[i] != '%') {
 			continue;
 		}
-		if (k < i) {
-			buffer_append(&buf, &string[k], i - k);
+		if (j < i) {
+			buffer_append(&buf, &string[j], i - j);
 		}
 		i++;
 		/* %% case */
@@ -673,28 +660,28 @@ percent_expand(const char *string, ...)
 		} else if (string[i] == '\0') {
 			fatal("%s: invalid format", __func__);
 		} else {
-			for (j = 0; j < num_keys; j++) {
-				if (strchr(keys[j].key, string[i]) != NULL) {
-					buffer_append(&buf, keys[j].repl,
-					    strlen(keys[j].repl));
+			for (spec = expand_specs; spec->keys; spec++) {
+				if (strchr(spec->keys, string[i]) != NULL) {
+					buffer_append(&buf, spec->repl,
+					    strlen(spec->repl));
 					break;
 				}
 			}
-			if (j >= num_keys)
+			if (!spec->keys)
 				fatal("%s: unknown key %%%c", __func__,
 				    string[i]);
 		}
-		k = i + 1;
+		j = i + 1;
 	}
-	if (k < i) {
-		buffer_append(&buf, &string[k], i - k);
+	if (j < i) {
+		buffer_append(&buf, &string[j], i - j);
 	}
+
 	/* i points to '\0' */
 	buffer_append(&buf, &string[i], 1);
 
 	/* reuse alloc from buffer, but compact it down to actual size */
 	return realloc(buffer_ptr(&buf), buffer_len(&buf));
-#undef EXPAND_MAX_KEYS
 }
 
 /*

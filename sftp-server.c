@@ -1505,6 +1505,11 @@ sftp_server_main(int argc, char **argv, struct passwd *user_pw)
 	SyslogFacility log_facility = SYSLOG_FACILITY_AUTH;
 	char *cp, *homedir = NULL, buf[4*4096];
 	long mask;
+	struct expand_spec pw_specs[] = {
+		{ "u", user_pw->pw_name },
+		{ "d", user_pw->pw_dir },
+		{ NULL, NULL }
+	};
 
 	extern char *optarg;
 	extern char *__progname;
@@ -1554,8 +1559,7 @@ sftp_server_main(int argc, char **argv, struct passwd *user_pw)
 			break;
 		case 'd':
 			cp = tilde_expand_filename(optarg, user_pw->pw_uid);
-			homedir = percent_expand(cp, "d", user_pw->pw_dir,
-			    "u", user_pw->pw_name, (char *)NULL);
+			homedir = percent_expand(cp, pw_specs);
 			free(cp);
 			break;
 		case 'p':

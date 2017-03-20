@@ -1357,10 +1357,14 @@ do_setusercontext(struct passwd *pw)
 
 		if (!in_chroot && options.chroot_directory != NULL &&
 		    strcasecmp(options.chroot_directory, "none") != 0) {
+			struct expand_spec specs[] = {
+				{ "h", pw->pw_dir },
+				{ "u", pw->pw_name },
+				{ NULL, NULL }
+			};
                         tmp = tilde_expand_filename(options.chroot_directory,
 			    pw->pw_uid);
-			chroot_path = percent_expand(tmp, "h", pw->pw_dir,
-			    "u", pw->pw_name, (char *)NULL);
+			chroot_path = percent_expand(tmp, specs);
 			safely_chroot(chroot_path, pw->pw_uid);
 			free(tmp);
 			free(chroot_path);

@@ -1028,8 +1028,11 @@ main(int ac, char **av)
 	/* If the user has replaced the hostname then take it into use now */
 	if (options.hostname != NULL) {
 		/* NB. Please keep in sync with readconf.c:match_cfg_line() */
-		cp = percent_expand(options.hostname,
-		    "h", host, (char *)NULL);
+		struct expand_spec specs[] = {
+			{ "h", host },
+			{ NULL, NULL }
+		};
+		cp = percent_expand(options.hostname, specs);
 		free(host);
 		host = cp;
 		free(options.hostname);
@@ -1196,38 +1199,43 @@ main(int ac, char **av)
 	conn_hash_hex = tohex(conn_hash, ssh_digest_bytes(SSH_DIGEST_SHA1));
 
 	if (options.local_command != NULL) {
+		struct expand_spec specs[] = {
+			{ "C", conn_hash_hex },
+			{ "L", shorthost },
+			{ "d", pw->pw_dir },
+			{ "h", host },
+			{ "l", thishost },
+			{ "n", host_arg },
+			{ "p", portstr },
+			{ "r", options.user },
+			{ "u", pw->pw_name },
+			{ NULL, NULL }
+		};
+
 		debug3("expanding LocalCommand: %s", options.local_command);
 		cp = options.local_command;
-		options.local_command = percent_expand(cp,
-		    "C", conn_hash_hex,
-		    "L", shorthost,
-		    "d", pw->pw_dir,
-		    "h", host,
-		    "l", thishost,
-		    "n", host_arg,
-		    "p", portstr,
-		    "r", options.user,
-		    "u", pw->pw_name,
-		    (char *)NULL);
+		options.local_command = percent_expand(cp, specs);
 		debug3("expanded LocalCommand: %s", options.local_command);
 		free(cp);
 	}
 
 	if (options.control_path != NULL) {
+		struct expand_spec specs[] = {
+			{ "C", conn_hash_hex },
+			{ "L", shorthost },
+			{ "h", host },
+			{ "l", thishost },
+			{ "n", host_arg },
+			{ "p", portstr },
+			{ "r", options.user },
+			{ "u", pw->pw_name },
+			{ "i", uidstr },
+		};
+
 		cp = tilde_expand_filename(options.control_path,
 		    original_real_uid);
 		free(options.control_path);
-		options.control_path = percent_expand(cp,
-		    "C", conn_hash_hex,
-		    "L", shorthost,
-		    "h", host,
-		    "l", thishost,
-		    "n", host_arg,
-		    "p", portstr,
-		    "r", options.user,
-		    "u", pw->pw_name,
-		    "i", uidstr,
-		    (char *)NULL);
+		options.control_path = percent_expand(cp, specs);
 		free(cp);
 	}
 	free(conn_hash_hex);
@@ -1396,11 +1404,17 @@ main(int ac, char **av)
 		if (strcmp(options.identity_agent, "none") == 0) {
 			unsetenv(SSH_AUTHSOCKET_ENV_NAME);
 		} else {
+			struct expand_spec specs[] = {
+				{ "d", pw->pw_dir },
+				{ "u", pw->pw_name },
+				{ "l", thishost },
+				{ "h", host },
+				{ "r", options.user },
+				{ NULL, NULL }
+			};
 			p = tilde_expand_filename(options.identity_agent,
 			    original_real_uid);
-			cp = percent_expand(p, "d", pw->pw_dir,
-			    "u", pw->pw_name, "l", thishost, "h", host,
-			    "r", options.user, (char *)NULL);
+			cp = percent_expand(p, specs);
 			setenv(SSH_AUTHSOCKET_ENV_NAME, cp, 1);
 			free(cp);
 			free(p);
@@ -2138,6 +2152,15 @@ load_public_identity_files(void)
 		fatal("load_public_identity_files: gethostname: %s",
 		    strerror(errno));
 	for (i = 0; i < options.num_identity_files; i++) {
+		struct expand_spec specs[] = {
+			{ "d", pwdir },
+			{ "h", host },
+			{ "l", thishost },
+			{ "r", options.user },
+			{ "u", pwname },
+			{ NULL, NULL }
+		};
+
 		if (n_ids >= SSH_MAX_IDENTITY_FILES ||
 		    strcasecmp(options.identity_files[i], "none") == 0) {
 			free(options.identity_files[i]);
@@ -2146,9 +2169,7 @@ load_public_identity_files(void)
 		}
 		cp = tilde_expand_filename(options.identity_files[i],
 		    original_real_uid);
-		filename = percent_expand(cp, "d", pwdir,
-		    "u", pwname, "l", thishost, "h", host,
-		    "r", options.user, (char *)NULL);
+		filename = percent_expand(cp, specs);
 		free(cp);
 		public = key_load_public(filename, NULL);
 		debug("identity file %s type %d", filename,
@@ -2190,11 +2211,17 @@ load_public_identity_files(void)
 	if (options.num_certificate_files > SSH_MAX_CERTIFICATE_FILES)
 		fatal("%s: too many certificates", __func__);
 	for (i = 0; i < options.num_certificate_files; i++) {
+		struct expand_spec specs[] = {
+			{ "d", pwdir },
+			{ "u", pwname },
+			{ "l", thishost },
+			{ "h", host },
+			{ "r", options.user },
+			{ NULL, NULL }
+		};
 		cp = tilde_expand_filename(options.certificate_files[i],
 		    original_real_uid);
-		filename = percent_expand(cp, "d", pwdir,
-		    "u", pwname, "l", thishost, "h", host,
-		    "r", options.user, (char *)NULL);
+		filename = percent_expand(cp, specs);
 		free(cp);
 
 		public = key_load_public(filename, NULL);

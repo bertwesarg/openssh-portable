@@ -645,6 +645,10 @@ match_principals_command(struct passwd *user_pw, const struct sshkey *key)
 	char *ca_fp = NULL, *key_fp = NULL, *catext = NULL, *keytext = NULL;
 	char serial_s[16];
 	void (*osigchld)(int);
+	struct expand_spec username_specs[] = {
+		{ "u", user_pw->pw_name },
+		{ NULL, NULL }
+	};
 
 	if (options.authorized_principals_command == NULL)
 		return 0;
@@ -662,7 +666,7 @@ match_principals_command(struct passwd *user_pw, const struct sshkey *key)
 
 	/* Prepare and verify the user for the command */
 	username = percent_expand(options.authorized_principals_command_user,
-	    "u", user_pw->pw_name, (char *)NULL);
+	    username_specs);
 	pw = getpwnam(username);
 	if (pw == NULL) {
 		error("AuthorizedPrincipalsCommandUser \"%s\" not found: %s",
@@ -702,18 +706,20 @@ match_principals_command(struct passwd *user_pw, const struct sshkey *key)
 	snprintf(serial_s, sizeof(serial_s), "%llu",
 	    (unsigned long long)cert->serial);
 	for (i = 1; i < ac; i++) {
-		tmp = percent_expand(av[i],
-		    "u", user_pw->pw_name,
-		    "h", user_pw->pw_dir,
-		    "t", sshkey_ssh_name(key),
-		    "T", sshkey_ssh_name(cert->signature_key),
-		    "f", key_fp,
-		    "F", ca_fp,
-		    "k", keytext,
-		    "K", catext,
-		    "i", cert->key_id,
-		    "s", serial_s,
-		    (char *)NULL);
+		struct expand_spec specs[] = {
+			{ "u", user_pw->pw_name },
+			{ "h", user_pw->pw_dir },
+			{ "t", sshkey_ssh_name(key) },
+			{ "T", sshkey_ssh_name(cert->signature_key) },
+			{ "f", key_fp },
+			{ "F", ca_fp },
+			{ "k", keytext },
+			{ "K", catext },
+			{ "i", cert->key_id },
+			{ "s", serial_s },
+			{ NULL, NULL }
+		};
+		tmp = percent_expand(av[i], specs);
 		if (tmp == NULL)
 			fatal("%s: percent_expand failed", __func__);
 		free(av[i]);
@@ -975,6 +981,10 @@ user_key_command_allowed2(struct passwd *user_pw, Key *key)
 	char *username = NULL, *key_fp = NULL, *keytext = NULL;
 	char *tmp, *command = NULL, **av = NULL;
 	void (*osigchld)(int);
+	struct expand_spec username_specs[] = {
+		{ "u", user_pw->pw_name },
+		{ NULL, NULL }
+	};
 
 	if (options.authorized_keys_command == NULL)
 		return 0;
@@ -991,7 +1001,7 @@ user_key_command_allowed2(struct passwd *user_pw, Key *key)
 
 	/* Prepare and verify the user for the command */
 	username = percent_expand(options.authorized_keys_command_user,
-	    "u", user_pw->pw_name, (char *)NULL);
+	    username_specs);
 	pw = getpwnam(username);
 	if (pw == NULL) {
 		error("AuthorizedKeysCommandUser \"%s\" not found: %s",
@@ -1022,13 +1032,15 @@ user_key_command_allowed2(struct passwd *user_pw, Key *key)
 		goto out;
 	}
 	for (i = 1; i < ac; i++) {
-		tmp = percent_expand(av[i],
-		    "u", user_pw->pw_name,
-		    "h", user_pw->pw_dir,
-		    "t", sshkey_ssh_name(key),
-		    "f", key_fp,
-		    "k", keytext,
-		    (char *)NULL);
+		struct expand_spec specs[] = {
+			{ "u", user_pw->pw_name },
+			{ "h", user_pw->pw_dir },
+			{ "t", sshkey_ssh_name(key) },
+			{ "f", key_fp },
+			{ "k", keytext },
+			{ NULL, NULL }
+		};
+		tmp = percent_expand(av[i], specs);
 		if (tmp == NULL)
 			fatal("%s: percent_expand failed", __func__);
 		free(av[i]);

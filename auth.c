@@ -400,9 +400,13 @@ expand_authorized_keys(const char *filename, struct passwd *pw)
 {
 	char *file, ret[PATH_MAX];
 	int i;
+	struct expand_spec specs[] = {
+		{ "h", pw->pw_dir },
+		{ "u", pw->pw_name },
+		{ NULL, NULL }
+	};
 
-	file = percent_expand(filename, "h", pw->pw_dir,
-	    "u", pw->pw_name, (char *)NULL);
+	file = percent_expand(filename, specs);
 
 	/*
 	 * Ensure that filename starts anchored. If not, be backward

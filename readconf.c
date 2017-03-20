@@ -568,8 +568,11 @@ match_cfg_line(Options *options, char **condition, struct passwd *pw,
 		host = xstrdup(options->hostname);
 	} else if (options->hostname != NULL) {
 		/* NB. Please keep in sync with ssh.c:main() */
-		host = percent_expand(options->hostname,
-		    "h", host_arg, (char *)NULL);
+		struct expand_spec specs[] = {
+			{ "h", host_arg },
+			{ NULL, NULL }
+		};
+		host = percent_expand(options->hostname, specs);
 	} else {
 		host = xstrdup(host_arg);
 	}
@@ -632,22 +635,24 @@ match_cfg_line(Options *options, char **condition, struct passwd *pw,
 			if (r == (negate ? 1 : 0))
 				this_result = result = 0;
 		} else if (strcasecmp(attrib, "exec") == 0) {
+			struct expand_spec specs[] = {
+				{ "L", shorthost },
+				{ "d", pw->pw_dir },
+				{ "h", host },
+				{ "l", thishost },
+				{ "n", original_host },
+				{ "p", portstr },
+				{ "r", ruser },
+				{ "u", pw->pw_name },
+				{ NULL, NULL }
+			};
 			if (gethostname(thishost, sizeof(thishost)) == -1)
 				fatal("gethostname: %s", strerror(errno));
 			strlcpy(shorthost, thishost, sizeof(shorthost));
 			shorthost[strcspn(thishost, ".")] = '\0';
 			snprintf(portstr, sizeof(portstr), "%d", port);
 
-			cmd = percent_expand(arg,
-			    "L", shorthost,
-			    "d", pw->pw_dir,
-			    "h", host,
-			    "l", thishost,
-			    "n", original_host,
-			    "p", portstr,
-			    "r", ruser,
-			    "u", pw->pw_name,
-			    (char *)NULL);
+			cmd = percent_expand(arg, specs);
 			if (result != 1) {
 				/* skip execution if prior predicate failed */
 				debug3("%.200s line %d: skipped exec "

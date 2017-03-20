@@ -64,7 +64,11 @@ char	*colon(char *);
 int	 parse_user_host_port(const char *, char **, char **, int *);
 long	 convtime(const char *);
 char	*tilde_expand_filename(const char *, uid_t);
-char	*percent_expand(const char *, ...) __attribute__((__sentinel__));
+struct expand_spec {
+	const char *keys;
+	const char *repl;
+};
+char	*percent_expand(const char *, const struct expand_spec *expand_specs);
 char	*tohex(const void *, size_t);
 void	 sanitise_stdfd(void);
 void	 ms_subtract_diff(struct timeval *, int *);

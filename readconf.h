@@ -202,12 +202,12 @@ int	 process_config_line(Options *, struct passwd *, const char *,
     const char *, char *, const char *, int, int *, int);
 int	 read_config_file(const char *, struct passwd *, const char *,
     const char *, Options *, int);
-int	 parse_forward(struct Forward *, const char *, int, int);
 int	 parse_jump(const char *, Options *, int);
 int	 default_ssh_port(void);
 int	 option_clear_or_none(const char *);
 void	 dump_client_config(Options *o, const char *host);
 
+int	 parse_forward(struct Forward *, const char *, u_int);
 void	 add_local_forward(Options *, const struct Forward *);
 void	 add_remote_forward(Options *, const struct Forward *);
 void	 add_identity_file(Options *, const char *, const char *, int);

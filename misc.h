@@ -17,8 +17,14 @@
 
 #include <sys/time.h>
 
+/* This is also part of the MUX protocol */
+#define SSH_FWD_LOCAL   1
+#define SSH_FWD_REMOTE  2
+#define SSH_FWD_DYNAMIC 3
+
 /* Data structure for representing a forwarding request. */
 struct Forward {
+	u_int	  type;			/* Type of forwarding [1, 2, 3] */
 	char	 *listen_host;		/* Host (address) to listen on. */
 	int	  listen_port;		/* Port to forward. */
 	char	 *listen_path;		/* Path to bind domain socket. */

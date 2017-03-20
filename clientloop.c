@@ -907,7 +907,8 @@ process_cmdline(void)
 {
 	void (*handler)(int);
 	char *s, *cmd;
-	int ok, delete = 0, local = 0, remote = 0, dynamic = 0;
+	int ok, delete = 0;
+	u_int fwdtype;
 	struct Forward fwd;
 
 	memset(&fwd, 0, sizeof(fwd));
@@ -956,11 +957,11 @@ process_cmdline(void)
 		s++;
 	}
 	if (*s == 'L')
-		local = 1;
+		fwdtype = SSH_FWD_LOCAL;
 	else if (*s == 'R')
-		remote = 1;
+		fwdtype = SSH_FWD_REMOTE;
 	else if (*s == 'D')
-		dynamic = 1;
+		fwdtype = SSH_FWD_DYNAMIC;
 	else {
 		logit("Invalid command.");
 		goto out;
@@ -976,14 +977,15 @@ process_cmdline(void)
 
 	/* XXX update list of forwards in options */
 	if (delete) {
-		/* We pass 1 for dynamicfwd to restrict to 1 or 2 fields. */
-		if (!parse_forward(&fwd, s, 1, 0)) {
+		/* We pass SSH_FWD_DYNAMIC to restrict to 1 or 2 fields. */
+		if (!parse_forward(&fwd, s, SSH_FWD_DYNAMIC)) {
 			logit("Bad forwarding close specification.");
 			goto out;
 		}
-		if (remote)
+		fwd.type = fwdtype;
+		if (fwdtype == SSH_FWD_REMOTE)
 			ok = channel_request_rforward_cancel(&fwd) == 0;
-		else if (dynamic)
+		else if (fwdtype == SSH_FWD_DYNAMIC)
 			ok = channel_cancel_lport_listener(&fwd,
 			    0, &options.fwd_opts) > 0;
 		else
@@ -996,11 +998,11 @@ process_cmdline(void)
 		}
 		logit("Canceled forwarding.");
 	} else {
-		if (!parse_forward(&fwd, s, dynamic, remote)) {
+		if (!parse_forward(&fwd, s, fwdtype)) {
 			logit("Bad forwarding specification.");
 			goto out;
 		}
-		if (local || dynamic) {
+		if (fwdtype == SSH_FWD_LOCAL || fwdtype == SSH_FWD_DYNAMIC) {
 			if (!channel_setup_local_fwd_listener(&fwd,
 			    &options.fwd_opts)) {
 				logit("Port forwarding failed.");

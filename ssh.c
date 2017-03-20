@@ -786,7 +786,7 @@ main(int ac, char **av)
 				fatal("stdio forward already specified");
 			if (muxclient_command != 0)
 				fatal("Cannot specify stdio forward with -O");
-			if (parse_forward(&fwd, optarg, 1, 0)) {
+			if (parse_forward(&fwd, optarg, SSH_FWD_DYNAMIC)) {
 				options.stdio_forward_host = fwd.listen_host;
 				options.stdio_forward_port = fwd.listen_port;
 				free(fwd.connect_host);
@@ -868,7 +868,7 @@ main(int ac, char **av)
 			break;
 
 		case 'L':
-			if (parse_forward(&fwd, optarg, 0, 0))
+			if (parse_forward(&fwd, optarg, SSH_FWD_LOCAL))
 				add_local_forward(&options, &fwd);
 			else {
 				fprintf(stderr,
@@ -879,7 +879,7 @@ main(int ac, char **av)
 			break;
 
 		case 'R':
-			if (parse_forward(&fwd, optarg, 0, 1)) {
+			if (parse_forward(&fwd, optarg, SSH_FWD_REMOTE)) {
 				add_remote_forward(&options, &fwd);
 			} else {
 				fprintf(stderr,
@@ -890,7 +890,7 @@ main(int ac, char **av)
 			break;
 
 		case 'D':
-			if (parse_forward(&fwd, optarg, 1, 0)) {
+			if (parse_forward(&fwd, optarg, SSH_FWD_DYNAMIC)) {
 				add_local_forward(&options, &fwd);
 			} else {
 				fprintf(stderr,

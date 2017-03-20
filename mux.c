@@ -157,9 +157,9 @@ struct mux_master_state {
 #define MUX_S_PROXY		0x8000000f
 
 /* type codes for MUX_C_OPEN_FWD and MUX_C_CLOSE_FWD */
-#define MUX_FWD_LOCAL   1
-#define MUX_FWD_REMOTE  2
-#define MUX_FWD_DYNAMIC 3
+#define MUX_FWD_LOCAL   SSH_FWD_LOCAL
+#define MUX_FWD_REMOTE  SSH_FWD_REMOTE
+#define MUX_FWD_DYNAMIC SSH_FWD_DYNAMIC
 
 static void mux_session_confirm(int, int, void *);
 static void mux_stdio_confirm(int, int, void *);
@@ -517,11 +517,11 @@ process_mux_terminate(u_int rid, Channel *c, Buffer *m, Buffer *r)
 }
 
 static char *
-format_forward(u_int ftype, struct Forward *fwd)
+format_forward(struct Forward *fwd)
 {
 	char *ret;
 
-	switch (ftype) {
+	switch (fwd->type) {
 	case MUX_FWD_LOCAL:
 		xasprintf(&ret, "local forward %.200s:%d -> %.200s:%d",
 		    (fwd->listen_path != NULL) ? fwd->listen_path :
@@ -547,7 +547,7 @@ format_forward(u_int ftype, struct Forward *fwd)
 		    fwd->connect_host, fwd->connect_port);
 		break;
 	default:
-		fatal("%s: unknown forward type %u", __func__, ftype);
+		fatal("%s: unknown forward type %u", __func__, fwd->type);
 	}
 	return ret;
 }
@@ -635,14 +635,13 @@ process_mux_open_fwd(u_int rid, Channel *c, Buffer *m, Buffer *r)
 	struct Forward fwd;
 	char *fwd_desc = NULL;
 	char *listen_addr, *connect_addr;
-	u_int ftype;
 	u_int lport, cport;
 	int i, ret = 0, freefwd = 1;
 
 	memset(&fwd, 0, sizeof(fwd));
 
 	/* XXX - lport/cport check redundant */
-	if (buffer_get_int_ret(&ftype, m) != 0 ||
+	if (buffer_get_int_ret(&fwd.type, m) != 0 ||
 	    (listen_addr = buffer_get_string_ret(m, NULL)) == NULL ||
 	    buffer_get_int_ret(&lport, m) != 0 ||
 	    (connect_addr = buffer_get_string_ret(m, NULL)) == NULL ||
@@ -662,7 +661,6 @@ process_mux_open_fwd(u_int rid, Channel *c, Buffer *m, Buffer *r)
 		connect_addr = NULL;
 	}
 
-	memset(&fwd, 0, sizeof(fwd));
 	fwd.listen_port = lport;
 	if (fwd.listen_port == PORT_STREAMLOCAL)
 		fwd.listen_path = listen_addr;
@@ -675,11 +673,11 @@ process_mux_open_fwd(u_int rid, Channel *c, Buffer *m, Buffer *r)
 		fwd.connect_host = connect_addr;
 
 	debug2("%s: channel %d: request %s", __func__, c->self,
-	    (fwd_desc = format_forward(ftype, &fwd)));
+	    (fwd_desc = format_forward(&fwd)));
 
-	if (ftype != MUX_FWD_LOCAL && ftype != MUX_FWD_REMOTE &&
-	    ftype != MUX_FWD_DYNAMIC) {
-		logit("%s: invalid forwarding type %u", __func__, ftype);
+	if (fwd.type != MUX_FWD_LOCAL && fwd.type != MUX_FWD_REMOTE &&
+	    fwd.type != MUX_FWD_DYNAMIC) {
+		logit("%s: invalid forwarding type %u", __func__, fwd.type);
  invalid:
 		free(listen_addr);
 		free(connect_addr);
@@ -688,7 +686,7 @@ process_mux_open_fwd(u_int rid, Channel *c, Buffer *m, Buffer *r)
 		buffer_put_cstring(r, "Invalid forwarding request");
 		return 0;
 	}
-	if (ftype == MUX_FWD_DYNAMIC && fwd.listen_path) {
+	if (fwd.type == MUX_FWD_DYNAMIC && fwd.listen_path) {
 		logit("%s: streamlocal and dynamic forwards "
 		    "are mutually exclusive", __func__);
 		goto invalid;
@@ -699,18 +697,19 @@ process_mux_open_fwd(u_int rid, Channel *c, Buffer *m, Buffer *r)
 		goto invalid;
 	}
 	if ((fwd.connect_port != PORT_STREAMLOCAL && fwd.connect_port >= 65536)
-	    || (ftype != MUX_FWD_DYNAMIC && ftype != MUX_FWD_REMOTE && fwd.connect_port == 0)) {
+	    || (fwd.type != MUX_FWD_DYNAMIC && fwd.type != MUX_FWD_REMOTE &&
+		fwd.connect_port == 0)) {
 		logit("%s: invalid connect port %u", __func__,
 		    fwd.connect_port);
 		goto invalid;
 	}
-	if (ftype != MUX_FWD_DYNAMIC && fwd.connect_host == NULL && fwd.connect_path == NULL) {
+	if (fwd.type != MUX_FWD_DYNAMIC && fwd.connect_host == NULL && fwd.connect_path == NULL) {
 		logit("%s: missing connect host", __func__);
 		goto invalid;
 	}
 
 	/* Skip forwards that have already been requested */
-	switch (ftype) {
+	switch (fwd.type) {
 	case MUX_FWD_LOCAL:
 	case MUX_FWD_DYNAMIC:
 		for (i = 0; i < options.num_local_forwards; i++) {
@@ -754,7 +753,7 @@ process_mux_open_fwd(u_int rid, Channel *c, Buffer *m, Buffer *r)
 		}
 	}
 
-	if (ftype == MUX_FWD_LOCAL || ftype == MUX_FWD_DYNAMIC) {
+	if (fwd.type == MUX_FWD_LOCAL || fwd.type == MUX_FWD_DYNAMIC) {
 		if (!channel_setup_local_fwd_listener(&fwd,
 		    &options.fwd_opts)) {
  fail:
@@ -804,13 +803,12 @@ process_mux_close_fwd(u_int rid, Channel *c, Buffer *m, Buffer *r)
 	char *fwd_desc = NULL;
 	const char *error_reason = NULL;
 	char *listen_addr = NULL, *connect_addr = NULL;
-	u_int ftype;
 	int i, ret = 0;
 	u_int lport, cport;
 
 	memset(&fwd, 0, sizeof(fwd));
 
-	if (buffer_get_int_ret(&ftype, m) != 0 ||
+	if (buffer_get_int_ret(&fwd.type, m) != 0 ||
 	    (listen_addr = buffer_get_string_ret(m, NULL)) == NULL ||
 	    buffer_get_int_ret(&lport, m) != 0 ||
 	    (connect_addr = buffer_get_string_ret(m, NULL)) == NULL ||
@@ -831,7 +829,6 @@ process_mux_close_fwd(u_int rid, Channel *c, Buffer *m, Buffer *r)
 		connect_addr = NULL;
 	}
 
-	memset(&fwd, 0, sizeof(fwd));
 	fwd.listen_port = lport;
 	if (fwd.listen_port == PORT_STREAMLOCAL)
 		fwd.listen_path = listen_addr;
@@ -844,11 +841,11 @@ process_mux_close_fwd(u_int rid, Channel *c, Buffer *m, Buffer *r)
 		fwd.connect_host = connect_addr;
 
 	debug2("%s: channel %d: request cancel %s", __func__, c->self,
-	    (fwd_desc = format_forward(ftype, &fwd)));
+	    (fwd_desc = format_forward(&fwd)));
 
 	/* make sure this has been requested */
 	found_fwd = NULL;
-	switch (ftype) {
+	switch (fwd.type) {
 	case MUX_FWD_LOCAL:
 	case MUX_FWD_DYNAMIC:
 		for (i = 0; i < options.num_local_forwards; i++) {
@@ -872,7 +869,7 @@ process_mux_close_fwd(u_int rid, Channel *c, Buffer *m, Buffer *r)
 
 	if (found_fwd == NULL)
 		error_reason = "port not forwarded";
-	else if (ftype == MUX_FWD_REMOTE) {
+	else if (found_fwd->type == MUX_FWD_REMOTE) {
 		/*
 		 * This shouldn't fail unless we confused the host/port
 		 * between options.remote_forwards and permitted_opens.
@@ -892,6 +889,7 @@ process_mux_close_fwd(u_int rid, Channel *c, Buffer *m, Buffer *r)
 		buffer_put_int(r, MUX_S_OK);
 		buffer_put_int(r, rid);
 
+		found_fwd->type = 0;
 		free(found_fwd->listen_host);
 		free(found_fwd->listen_path);
 		free(found_fwd->connect_host);
@@ -1674,13 +1672,13 @@ mux_client_request_terminate(int fd)
 }
 
 static int
-mux_client_forward(int fd, int cancel_flag, u_int ftype, struct Forward *fwd)
+mux_client_forward(int fd, int cancel_flag, struct Forward *fwd)
 {
 	Buffer m;
 	char *e, *fwd_desc;
 	u_int type, rid;
 
-	fwd_desc = format_forward(ftype, fwd);
+	fwd_desc = format_forward(fwd);
 	debug("Requesting %s %s",
 	    cancel_flag ? "cancellation of" : "forwarding of", fwd_desc);
 	free(fwd_desc);
@@ -1688,7 +1686,7 @@ mux_client_forward(int fd, int cancel_flag, u_int ftype, struct Forward *fwd)
 	buffer_init(&m);
 	buffer_put_int(&m, cancel_flag ? MUX_C_CLOSE_FWD : MUX_C_OPEN_FWD);
 	buffer_put_int(&m, muxclient_request_id);
-	buffer_put_int(&m, ftype);
+	buffer_put_int(&m, fwd->type);
 	if (fwd->listen_path != NULL) {
 		buffer_put_cstring(&m, fwd->listen_path);
 	} else {
@@ -1766,13 +1764,11 @@ mux_client_forwards(int fd, int cancel_flag)
 	/* XXX ExitOnForwardingFailure */
 	for (i = 0; i < options.num_local_forwards; i++) {
 		if (mux_client_forward(fd, cancel_flag,
-		    options.local_forwards[i].connect_port == 0 ?
-		    MUX_FWD_DYNAMIC : MUX_FWD_LOCAL,
 		    options.local_forwards + i) != 0)
 			ret = -1;
 	}
 	for (i = 0; i < options.num_remote_forwards; i++) {
-		if (mux_client_forward(fd, cancel_flag, MUX_FWD_REMOTE,
+		if (mux_client_forward(fd, cancel_flag,
 		    options.remote_forwards + i) != 0)
 			ret = -1;
 	}

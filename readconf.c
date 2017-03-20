@@ -337,6 +337,7 @@ add_local_forward(Options *options, const struct Forward *newfwd)
 	    sizeof(*options->local_forwards));
 	fwd = &options->local_forwards[options->num_local_forwards++];
 
+	fwd->type = newfwd->type;
 	fwd->listen_host = newfwd->listen_host;
 	fwd->listen_port = newfwd->listen_port;
 	fwd->listen_path = newfwd->listen_path;
@@ -366,6 +367,7 @@ add_remote_forward(Options *options, const struct Forward *newfwd)
 	    sizeof(*options->remote_forwards));
 	fwd = &options->remote_forwards[options->num_remote_forwards++];
 
+	fwd->type = newfwd->type;
 	fwd->listen_host = newfwd->listen_host;
 	fwd->listen_port = newfwd->listen_port;
 	fwd->listen_path = newfwd->listen_path;
@@ -1286,8 +1288,9 @@ parse_keytypes:
 		}
 
 		if (parse_forward(&fwd, fwdarg,
-		    opcode == oDynamicForward ? 1 : 0,
-		    opcode == oRemoteForward ? 1 : 0) == 0)
+		    opcode == oDynamicForward ? SSH_FWD_DYNAMIC :
+		    opcode == oRemoteForward  ? SSH_FWD_REMOTE :
+		                                SSH_FWD_LOCAL) == 0)
 			fatal("%.200s line %d: Bad forwarding specification.",
 			    filename, linenum);
 
@@ -2164,21 +2167,22 @@ done:
 /*
  * parse_forward
  * parses a string containing a port forwarding specification of the form:
- *   dynamicfwd == 0
+ *   fwdtype != SSH_FWD_DYNAMIC
  *	[listenhost:]listenport|listenpath:connecthost:connectport|connectpath
  *	listenpath:connectpath
- *   dynamicfwd == 1
+ *   fwdtype == SSH_FWD_DYNAMIC
  *	[listenhost:]listenport
  * returns number of arguments parsed or zero on error
  */
 int
-parse_forward(struct Forward *fwd, const char *fwdspec, int dynamicfwd, int remotefwd)
+parse_forward(struct Forward *fwd, const char *fwdspec, u_int fwdtype)
 {
 	struct fwdarg fwdargs[4];
 	char *p, *cp;
 	int i;
 
 	memset(fwd, 0, sizeof(*fwd));
+	fwd->type = fwdtype;
 	memset(fwdargs, 0, sizeof(fwdargs));
 
 	cp = p = xstrdup(fwdspec);
@@ -2258,7 +2262,7 @@ parse_forward(struct Forward *fwd, const char *fwdspec, int dynamicfwd, int remo
 
 	free(p);
 
-	if (dynamicfwd) {
+	if (fwd->type == SSH_FWD_DYNAMIC) {
 		if (!(i == 1 || i == 2))
 			goto fail_free;
 	} else {
@@ -2272,7 +2276,7 @@ parse_forward(struct Forward *fwd, const char *fwdspec, int dynamicfwd, int remo
 	}
 
 	if ((fwd->listen_port < 0 && fwd->listen_path == NULL) ||
-	    (!remotefwd && fwd->listen_port == 0))
+	    (fwd->type != SSH_FWD_REMOTE && fwd->listen_port == 0))
 		goto fail_free;
 	if (fwd->connect_host != NULL &&
 	    strlen(fwd->connect_host) >= NI_MAXHOST)

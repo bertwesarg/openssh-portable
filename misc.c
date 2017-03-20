@@ -1232,6 +1232,8 @@ strcmp_maybe_null(const char *a, const char *b)
 int
 forward_equals(const struct Forward *a, const struct Forward *b)
 {
+	if (a->type != b->type)
+		return 0;
 	if (strcmp_maybe_null(a->listen_host, b->listen_host) == 0)
 		return 0;
 	if (a->listen_port != b->listen_port)

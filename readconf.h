@@ -16,6 +16,14 @@
 #ifndef READCONF_H
 #define READCONF_H
 
+/* Data structure for representing a local env modification. */
+
+typedef struct {
+	char	 *name;		/* The name of the variable. */
+	int	  operation;	/* The operation (\0 for set, other chars for append with this separator). */
+	char	 *value;	/* The operand for the operation. */
+}       EnvMod;
+
 /* Data structure for representing option data. */
 
 #define MAX_SEND_ENV		256
@@ -165,6 +173,10 @@ typedef struct {
 	char   *jump_extra;
 
 	char	*ignored_unknown; /* Pattern list of unknown tokens to ignore */
+
+	/* Changes to the local envirionment */
+	int	num_local_env_mods;
+	EnvMod	*local_env_mods;
 }       Options;
 
 #define SSH_CANONICALISE_NO	0

@@ -60,6 +60,7 @@ LTESTS= 	connect \
 		cfgmatch \
 		addrmatch \
 		localcommand \
+		localenvmod \
 		forcecommand \
 		portnum \
 		keytype \
@@ -97,7 +98,7 @@ CLEANFILES=	*.core actual agent-key.* authorized_keys_${USERNAME} \
 		copy.1 copy.2 data ed25519-agent ed25519-agent* \
 		ed25519-agent.pub empty.in expect failed-regress.log \
 		failed-ssh.log failed-sshd.log hkr.* host.rsa host.rsa1 \
-		host_* host_ca_key* host_krl_* host_revoked_* key.* \
+		host_* host_ca_key* host_krl_* host_revoked_* input key.* \
 		key.dsa-* key.ecdsa-* key.ed25519-512 key.ed25519-512.pub \
 		key.rsa-* keys-command-args kh.* known_hosts \
 		known_hosts-cert known_hosts.* krl-* ls.copy modpipe \

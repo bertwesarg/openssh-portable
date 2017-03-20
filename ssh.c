@@ -1290,6 +1290,68 @@ main(int ac, char **av)
 		debug3("timeout: %d ms remain after connect", timeout_ms);
 
 	/*
+	 * Apply the env modifications after making the connection,
+	 * so that the env for the proxy command will not clobbered.
+	 */
+	if (options.num_local_env_mods > 0) {
+		char thishost[NI_MAXHOST];
+		struct expand_spec specs[] = {
+			{ "d", pw->pw_dir },
+			{ "h", options.hostname },
+			{ "l", thishost },
+			{ "L", shorthost },
+			{ "n", host },
+			{ "r", options.user },
+			{ "p", portstr },
+			{ "u", pw->pw_name },
+			{ "S", options.control_path },
+			{ NULL, NULL }
+		};
+
+		for (i = 0; i < options.num_local_env_mods; i++) {
+			char sepbuf[2], *oldval;
+			int prepend = 0;
+			int op = options.local_env_mods[i].operation;
+			if (0 > op) {
+				prepend = 1;
+				op = -op;
+			}
+			sepbuf[0] = op;
+			sepbuf[1] = '\0';
+			debug3("expanding LocalEnvMod: %s %s%s= %s",
+			    options.local_env_mods[i].name,
+			    op ? (prepend ? "%" : "+") : "",
+			    sepbuf,
+			    options.local_env_mods[i].value);
+			cp = options.local_env_mods[i].value;
+			options.local_env_mods[i].value = percent_expand(cp,
+			    specs);
+			debug3("expanded LocalEnvMod:  %s %s%s= %s",
+			    options.local_env_mods[i].name,
+			    op ? (prepend ? "%" : "+") : "",
+			    sepbuf,
+			    options.local_env_mods[i].value);
+			free(cp);
+			if (op &&
+			    (oldval = getenv(options.local_env_mods[i].name)) &&
+			    strlen(oldval) > 0) {
+				char *newval = xmalloc(strlen(oldval) + 1 + strlen(options.local_env_mods[i].value) + 1);
+				strcpy(newval, prepend ? options.local_env_mods[i].value : oldval);
+				strcat(newval, sepbuf);
+				strcat(newval, prepend ? oldval : options.local_env_mods[i].value);
+				setenv(options.local_env_mods[i].name, newval, 1);
+				free(newval);
+			} else if (options.local_env_mods[i].value[0]) {
+				/* set or mod without current value for variable */
+				setenv(options.local_env_mods[i].name,
+				    options.local_env_mods[i].value, 1);
+			} else {
+				unsetenv(options.local_env_mods[i].name);
+			}
+		}
+	}
+
+	/*
 	 * If we successfully made the connection, load the host private key
 	 * in case we will need it later for combined rsa-rhosts
 	 * authentication. This must be done before releasing extra

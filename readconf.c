@@ -171,7 +171,7 @@ typedef enum {
 	oStreamLocalBindMask, oStreamLocalBindUnlink, oRevokedHostKeys,
 	oFingerprintHash, oUpdateHostkeys, oHostbasedKeyTypes,
 	oPubkeyAcceptedKeyTypes, oProxyJump,
-	oIgnoredUnknownOption, oDeprecated, oUnsupported
+	oIgnoredUnknownOption, oDeprecated, oUnsupported, oLocalEnvMod
 } OpCodes;
 
 /* Textual representations of the tokens. */
@@ -308,6 +308,7 @@ static struct {
 	{ "pubkeyacceptedkeytypes", oPubkeyAcceptedKeyTypes },
 	{ "ignoreunknown", oIgnoreUnknown },
 	{ "proxyjump", oProxyJump },
+	{ "localenvmod", oLocalEnvMod },
 
 	{ NULL, oBadOption }
 };
@@ -724,6 +725,44 @@ valid_domain(char *name, const char *filename, int linenum)
 }
 
 /*
+ * Adds a command to modify the local environment. Never returns if there is an
+ * error.
+ */
+void
+add_local_env_mod(Options *options, const EnvMod *newmod)
+{
+	EnvMod *mod;
+
+	options->local_env_mods = xreallocarray(options->local_env_mods,
+	    options->num_local_env_mods + 1,
+	    sizeof(*options->local_env_mods));
+	mod = &options->local_env_mods[options->num_local_env_mods++];
+
+	mod->name = newmod->name;
+	mod->operation = newmod->operation;
+	mod->value = newmod->value;
+}
+
+static void
+clear_local_env_mods(Options *options)
+{
+	int i;
+
+	for (i = 0; i < options->num_local_env_mods; i++) {
+		free(options->local_env_mods[i].name);
+		free(options->local_env_mods[i].value);
+	}
+	if (options->num_local_env_mods > 0) {
+		free(options->local_env_mods);
+		options->num_local_env_mods = 0;
+		options->local_env_mods = NULL;
+	}
+}
+
+static int
+parse_env_mod(EnvMod *mod, const char *modspec);
+
+/*
  * Returns the number of the token pointed to by cp or oBadOption.
  */
 static OpCodes
@@ -845,6 +884,7 @@ process_config_line_depth(Options *options, struct passwd *pw, const char *host,
 	const struct multistate *multistate_ptr;
 	struct allowed_cname *cname;
 	glob_t gl;
+	EnvMod mod;
 
 	if (activep == NULL) { /* We are processing a command line directive */
 		cmdline = 1;
@@ -1672,6 +1712,20 @@ parse_keytypes:
 		charptr = &options->pubkey_key_types;
 		goto parse_keytypes;
 
+	case oLocalEnvMod:
+		/* We try to consume the complete line */
+		arg = s;
+		s = s + strlen(s);
+
+		if (parse_env_mod(&mod, arg) == 0)
+			fatal("%.200s line %d: Bad env mod specification.",
+			    filename, linenum);
+
+		if (*activep) {
+			add_local_env_mod(options, &mod);
+		}
+		break;
+
 	case oAddKeysToAgent:
 		intptr = &options->add_keys_to_agent;
 		multistate_ptr = multistate_yesnoaskconfirm;
@@ -1728,6 +1782,7 @@ read_config_file_depth(const char *filename, struct passwd *pw,
 	char line[4096];
 	int linenum;
 	int bad_options = 0;
+	int prev_num_local_env_mods = options->num_local_env_mods;
 
 	if (depth < 0 || depth > READCONF_MAX_DEPTH)
 		fatal("Too many recursive configuration includes");
@@ -1765,6 +1820,36 @@ read_config_file_depth(const char *filename, struct passwd *pw,
 	if (bad_options > 0)
 		fatal("%s: terminating, %d bad configuration options",
 		    filename, bad_options);
+
+	/* swap LocalEnvMod directives from this file in-front of previous ones */
+	if (prev_num_local_env_mods != options->num_local_env_mods) {
+		EnvMod *start = options->local_env_mods;
+		EnvMod *split = options->local_env_mods + prev_num_local_env_mods;
+		EnvMod *end   = options->local_env_mods + options->num_local_env_mods;
+		EnvMod tmp, *low, *high;
+
+		low = start; high = split - 1;
+		while (low < high) {
+			tmp = *high;
+			*high-- = *low;
+			*low++ = tmp;
+		}
+
+		low = split; high = end - 1;
+		while (low < high) {
+			tmp = *high;
+			*high-- = *low;
+			*low++ = tmp;
+		}
+
+		low = start; high = end - 1;
+		while (low < high) {
+			tmp = *high;
+			*high-- = *low;
+			*low++ = tmp;
+		}
+	}
+
 	return 1;
 }
 
@@ -1882,6 +1967,8 @@ initialize_options(Options * options)
 	options->update_hostkeys = -1;
 	options->hostbased_key_types = NULL;
 	options->pubkey_key_types = NULL;
+	options->local_env_mods = NULL;
+	options->num_local_env_mods = 0;
 }
 
 /*
@@ -2503,6 +2590,33 @@ dump_cfg_forwards(u_int count, const struct Forward *fwds)
 	}
 }
 
+static void
+dump_cfg_envmods(u_int count, const EnvMod* mods)
+{
+	const EnvMod *mod;
+	u_int i;
+	char sepbuf[2];
+	int prepend;
+	int op;
+
+	for (i = 0; i < count; i++) {
+		mod = &mods[i];
+		prepend = 0;
+		op = mod->operation;
+		if (0 > op) {
+			prepend = 1;
+			op = -op;
+		}
+		sepbuf[0] = op;
+		sepbuf[1] = '\0';
+		printf("localenvmod %s %s%s= %s\n",
+		    mod->name,
+		    op ? (prepend ? "%" : "+") : "",
+		    sepbuf, mod->value);
+	}
+}
+
+
 void
 dump_client_config(Options *o, const char *host)
 {
@@ -2690,4 +2804,89 @@ dump_client_config(Options *o, const char *host)
 		    o->jump_port <= 0 ? "" : ":",
 		    o->jump_port <= 0 ? "" : buf);
 	}
+
+	/* env mods */
+	dump_cfg_envmods(o->num_local_env_mods, o->local_env_mods);
+}
+
+/*
+ * variablename[whitespace][{+,%}[separator]]=[whitespace]value
+ * value may be optional for set command (ie. w/o +)
+ * SSHFS_MOUNT += mars-fastfs:/fastfs
+ * SOME_PATH +:= /some/bin
+ * SOME_PATH %:= /some/other/bin
+ * '+' and '%' shouldn't be used as separator
+ * TODO: don't overwrite?
+ * VAR ?= value
+ */
+int
+parse_env_mod(EnvMod *mod, const char *modspec)
+{
+	char *p, *cp, *ne, *eq;
+	size_t len;
+
+	memset(mod, '\0', sizeof(*mod));
+
+	cp = p = xstrdup(modspec);
+
+	/* skip leading spaces */
+	while (isspace(*cp))
+		cp++;
+
+	eq = strchr(cp, '=');
+
+	if (!eq)
+		return 0;
+
+	len = eq - modspec;
+	if (len == 0)
+		return 0;
+
+	ne = eq;
+	if ((len > 2 && eq[-1] == '+') || (len > 3 && eq[-2] == '+') ||
+	    (len > 2 && eq[-1] == '%') || (len > 3 && eq[-2] == '%')) {
+		ne--;
+		/* append/prepend, comma is default separator */
+		mod->operation = ',';
+		if ((len > 3 && eq[-2] == '+') || (len > 3 && eq[-2] == '%')) {
+			ne--;
+			mod->operation = eq[-1];
+		}
+		/* prepend? */
+		if ((len > 2 && eq[-1] == '%') || (len > 3 && eq[-2] == '%')) {
+			mod->operation = -mod->operation;
+		}
+	}
+	/* Remove traling whitespace from variable name */
+	while ((ne - 1) > cp && isspace(ne[-1]))
+		ne--;
+	/* Terminate variable name */
+	*ne = '\0';
+
+	if (strlen(cp) == 0)
+		return 0;
+
+	/* Skip leading spaces for variable value */
+	eq++;
+	while (isspace(*eq))
+		eq++;
+
+	/* Remove possible double quotes around value */
+	len = strlen(eq);
+	if (len > 1 && eq[0] == '"' && eq[len - 1] == '"') {
+		eq[len - 1] = '\0';
+		eq++;
+		len -= 2;
+	}
+
+	/* Allow to unset when  */
+	if (mod->operation && len == 0)
+		return 0;
+
+	mod->name = xstrdup(cp);
+	mod->value = xstrdup(eq);
+
+	free(p);
+
+	return 1;
 }

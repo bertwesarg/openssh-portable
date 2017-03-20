@@ -1144,6 +1144,10 @@ check_host_key(char *hostname, struct sockaddr *hostaddr, u_short port,
 			    "man-in-the-middle attacks.");
 			options.num_local_forwards =
 			    options.num_remote_forwards = 0;
+			free(options.local_forwards);
+			options.local_forwards = NULL;
+			free(options.remote_forwards);
+			options.remote_forwards = NULL;
 			cancelled_forwarding = 1;
 		}
 		if (options.tun_open != SSH_TUNMODE_NO) {
